@@ -165,7 +165,9 @@ export async function applyDailyFaceoff(g, leagueGa) {
     const d = res[i];
     if (!d?.groups?.f1) { t.linesSource = 'estimate'; return; }
     const find = matcher(t.skaters), findG = matcher(t.goalies);
-    const unit = (k) => (d.groups[k] || []).map((x) => find(x.name)).filter(Boolean);
+    const rank = (pos) => { const i = ['lw', 'c', 'rw', 'ld', 'rd'].findIndex((k) => String(pos || '').startsWith(k)); return i < 0 ? 9 : i; };
+    // Order each unit LW, C, RW (or LD, RD) using Daily Faceoff's position tags.
+    const unit = (k) => [...(d.groups[k] || [])].map((x, i) => ({ x, i })).sort((a, b) => (/^[fd]\d$/.test(k) ? rank(a.x.pos) - rank(b.x.pos) : 0) || a.i - b.i).map(({ x }) => find(x.name)).filter(Boolean);
     const lines = ['f1', 'f2', 'f3', 'f4'].map(unit).filter((l) => l.length);
     const pairs = ['d1', 'd2', 'd3'].map(unit).filter((l) => l.length);
     if (lines.length < 3 || pairs.length < 2) { t.linesSource = 'estimate'; return; }
