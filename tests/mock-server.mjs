@@ -75,6 +75,16 @@ http.createServer(async (req, res) => {
   const send = (code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type }); res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body)); };
   if (url.pathname.startsWith('/api/nhl/')) { const d = nhl(url.pathname.slice(9)); return d ? send(200, d) : send(404, { error: 'introuvable' }); }
   if (url.pathname.startsWith('/api/img/')) return url.pathname.endsWith('.svg') ? send(200, svgLogo(url.pathname.match(/([A-Z]{3})_/)[1]), 'image/svg+xml') : send(200, png, 'image/png');
+  if (url.pathname.startsWith('/api/lines/')) {
+    const a = url.pathname.slice(-3), cs = clubStats[a];
+    if (!cs || a === 'VGK') return send(200, { source: null });
+    const n = (k) => ({ name: `${cs.skaters[k].firstName.default} ${cs.skaters[k].lastName.default}` });
+    const g = (k) => ({ name: `${cs.goalies[k].firstName.default} ${cs.goalies[k].lastName.default}` });
+    return send(200, { source: 'dailyfaceoff', updated: new Date().toISOString(), groups: {
+      f1: [n(1), n(0), n(2)], f2: [n(4), n(3), n(5)], f3: [n(7), n(6), n(8)], f4: [n(10), n(9), n(11)],
+      d1: [n(13), n(14)], d2: [n(15), n(16)], d3: [n(17), n(18)], pp1: [n(0), n(1), n(2), n(3), n(13)], pp2: [n(4), n(5), n(6), n(7), n(15)], g: [g(1), g(0)] },
+      injuries: [{ name: 'Max Domi' }] });
+  }
   if (url.pathname === '/api/news') return send(200, { items: [1, 2, 3, 4, 5].map((i) => ({ _entityId: 'n' + i, slug: 'article-' + i, headline: i === 1 ? 'Matthews et les Maple Leafs reçoivent le Canadien' : 'Les formations et gardiens partants prévus de la journée ' + i, fields: { description: 'Aperçu du match de ce soir, avec les trios et les gardiens annoncés.' }, contentDate: new Date(Date.now() - i * 3600e3).toISOString(), thumbnail: { templateUrl: 'https://media.d3.nhle.com/image/private/{formatInstructions}/prd/x' + i }, tags: [{ slug: 'teamid-10', extraData: { abbreviation: i % 2 ? 'TOR' : 'EDM' } }, { slug: i === 1 ? 'game-preview' : 'news', extraData: {} }, ...(i === 1 ? [{ slug: 'teamid-8', extraData: { abbreviation: 'MTL' } }] : [])] })) });
   if (url.pathname === '/api/odds/events') return send(200, { enabled: true, events: [{ id: 'a'.repeat(32), home: 'Toronto Maple Leafs', away: 'Montreal Canadiens', start: games[0].startTimeUTC }] });
   if (url.pathname.startsWith('/api/odds/event/')) return send(200, { enabled: true, players: summarizeProps(oddsEvent) });

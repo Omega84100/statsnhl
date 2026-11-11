@@ -58,7 +58,7 @@ function teamData(abbr, stats, roster) {
   }));
   const goalies = (stats?.goalies || []).filter((g) => keep(g.playerId)).map((g) => ({
     id: g.playerId, team: abbr,
-    name: `${txt(g.firstName)} ${txt(g.lastName)}`.trim(),
+    name: `${txt(g.firstName)} ${txt(g.lastName)}`.trim(), last: txt(g.lastName),
     short: `${txt(g.firstName).charAt(0)}. ${txt(g.lastName)}`,
     number: numbers.get(g.playerId) ?? null, headshot: g.headshot,
     gp: g.gamesPlayed || 0, starts: g.gamesStarted || 0, wins: g.wins || 0, losses: g.losses || 0, otl: g.overtimeLosses || 0,
@@ -122,17 +122,63 @@ export async function loadNight(date) {
       t.lines = estimateLines(data.skaters);
       t.skaters = data.skaters;
     }
-    for (const side of ['away', 'home']) {
-      const t = g[side], opp = g[side === 'home' ? 'away' : 'home'];
-      const ctx = { oppGoalie: opp.starter?.rating ?? 50, oppGaPerGame: opp.standing?.gapg, leagueGaPerGame: leagueGa, home: side === 'home', backToBack: t.b2b };
-      const lineup = new Set([...t.lines.lines.flat(), ...t.lines.pairs.flat()].map((p) => p.id));
-      for (const s of t.skaters) {
-        if (!lineup.has(s.id)) continue; // only the projected dressed players
-        players.push({ ...s, gameId: g.id, opp: opp.abbr, home: side === 'home', oppGoalie: opp.starter, b2b: t.b2b, probs: skaterProbabilities(s, ctx) });
-      }
-    }
+    players.push(...gamePlayers(g, leagueGa));
   }
   return { date, games, players, leagueGa, fetchedAt: new Date() };
+}
+
+// Probabilities for the dressed players of one game (projected lines + pairs).
+export function gamePlayers(g, leagueGa) {
+  const out = [];
+  for (const side of ['away', 'home']) {
+    const t = g[side], opp = g[side === 'home' ? 'away' : 'home'];
+    const ctx = { oppGoalie: opp.starter?.rating ?? 50, oppGaPerGame: opp.standing?.gapg, leagueGaPerGame: leagueGa, home: side === 'home', backToBack: t.b2b };
+    const roleOf = new Map();
+    t.lines.lines.forEach((l, i) => l.forEach((p) => roleOf.set(p.id, 'L' + (i + 1))));
+    t.lines.pairs.forEach((l, i) => l.forEach((p) => roleOf.set(p.id, 'D' + (i + 1))));
+    const pp = new Map();
+    (t.pp || []).forEach((u, i) => u.forEach((p) => pp.set(p.id, 'PP' + (i + 1))));
+    for (const s of t.skaters) {
+      if (!roleOf.has(s.id)) continue; // only the projected dressed players
+      out.push({ ...s, gameId: g.id, opp: opp.abbr, home: side === 'home', oppGoalie: opp.starter, b2b: t.b2b, role: roleOf.get(s.id), pp: pp.get(s.id) || null, probs: skaterProbabilities(s, ctx) });
+    }
+  }
+  return out;
+}
+
+// ----- Daily Faceoff projected lines, mapped onto NHL players -----
+const lastName = (n) => norm(String(n).split(' ').slice(1).join(' ') || n);
+function matcher(list) {
+  const full = new Map(list.map((p) => [norm(p.name), p]));
+  return (name) => {
+    if (!name) return null;
+    const hit = full.get(norm(name));
+    if (hit) return hit;
+    const ln = lastName(name), cands = list.filter((p) => norm(p.last) === ln);
+    return cands.length === 1 ? cands[0] : null;
+  };
+}
+export async function applyDailyFaceoff(g, leagueGa) {
+  const res = await Promise.all([g.away, g.home].map((t) => fetch('/api/lines/' + t.abbr).then((r) => r.json()).catch(() => null)));
+  let changed = false;
+  [g.away, g.home].forEach((t, i) => {
+    const d = res[i];
+    if (!d?.groups?.f1) { t.linesSource = 'estimate'; return; }
+    const find = matcher(t.skaters), findG = matcher(t.goalies);
+    const unit = (k) => (d.groups[k] || []).map((x) => find(x.name)).filter(Boolean);
+    const lines = ['f1', 'f2', 'f3', 'f4'].map(unit).filter((l) => l.length);
+    const pairs = ['d1', 'd2', 'd3'].map(unit).filter((l) => l.length);
+    if (lines.length < 3 || pairs.length < 2) { t.linesSource = 'estimate'; return; }
+    // Daily Faceoff lists LW, C, RW: keep that order for the rink.
+    t.lines = { lines, pairs };
+    t.pp = ['pp1', 'pp2'].map(unit).filter((l) => l.length);
+    const g1 = (d.groups.g || []).map((x) => findG(x.name)).filter(Boolean)[0];
+    if (g1) t.starter = g1;
+    t.injured = (d.injuries || []).map((x) => x.name);
+    t.linesSource = 'dailyfaceoff'; t.linesUpdated = d.updated || null;
+    changed = true;
+  });
+  return changed;
 }
 
 // Live score refresh (cheap: one request).

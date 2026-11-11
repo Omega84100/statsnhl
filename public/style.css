@@ -255,3 +255,31 @@ input{caret-color:var(--ice)}
 @keyframes beam{to{--beam:360deg}}
 .game.is-live{border-color:color-mix(in srgb,#ff4d5e 45%,var(--line))}
 @media (prefers-reduced-motion:reduce){.beam::after{display:none}}
+
+/* ---------- Line selector & units on the ice ---------- */
+.units{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.units button{min-width:48px;height:40px;border:0;border-radius:9px;background:transparent;color:var(--ink2);font:700 17px 'Barlow Condensed';letter-spacing:.5px}
+.units button:hover{color:var(--ink);background:var(--chip)}
+.units button[aria-pressed=true]{background:var(--ice2);color:#fff;box-shadow:0 4px 14px #568fe055}
+.rink-bar h2{margin-right:auto}
+.unit-panel{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+.unit-col{background:radial-gradient(120% 60% at 0% 0%,color-mix(in srgb,var(--tc) 18%,transparent),transparent 60%),var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.unit-col h3{display:flex;align-items:center;gap:8px;font-size:22px;margin-bottom:6px}.unit-col h3 small{font:500 11px 'DM Sans';color:var(--ink3);margin-left:auto;text-transform:uppercase;letter-spacing:1px}
+.u-row{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:10px;width:100%;background:none;border:0;border-top:1px solid var(--line);padding:8px 0;text-align:left;color:var(--ink)}
+.u-row:hover b{color:var(--ice)}
+.u-row .face.mini{width:38px;height:38px;margin:0}
+.u-row span{min-width:0}.u-row span b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.u-row small{display:block;font-size:12px;color:var(--ink3)}
+.u-stat{text-align:right}.u-stat b{font:700 20px 'Barlow Condensed';color:var(--ice);font-variant-numeric:tabular-nums}
+.unit-tag{min-width:40px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink2);font:700 14px 'Barlow Condensed';display:inline-grid;place-items:center}
+button.unit-tag:hover{border-color:var(--ice2);color:var(--ice)}
+.unit-tag.pp{color:var(--gold)}
+.lu-row.sel{background:color-mix(in srgb,var(--tc) 14%,transparent);border-radius:8px}
+.lu-row.sel .unit-tag{background:var(--ice2);border-color:var(--ice2);color:#fff}
+.lu em{font-style:normal;font-size:11px;color:var(--ink3);margin-left:6px;font-variant-numeric:tabular-nums}
+.src{font:600 12px 'DM Sans';letter-spacing:1px;text-transform:uppercase;color:var(--gold);border:1px solid #6b5a2f;border-radius:6px;padding:2px 7px;vertical-align:middle;margin-left:8px}
+.inj{margin:8px 0 0;color:var(--warn)}
+@media (max-width:760px){
+  .unit-panel{grid-template-columns:1fr}
+  .units{width:100%;overflow-x:auto}.units button{flex:1;min-width:44px}
+  .rink-bar{gap:8px}
+}

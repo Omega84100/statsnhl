@@ -1,3 +1,4 @@
+import { fetchLines } from './dailyfaceoff.js';
 // Shared proxy logic for the official NHL API (used by Cloudflare and Netlify).
 // The browser cannot call api-web.nhle.com directly (no CORS headers), so every
 // request goes through /api/nhl/<path>. Only known read-only paths are allowed.
@@ -35,6 +36,18 @@ export async function handleApi(request, { cache, env = {} } = {}) {
   const url = new URL(request.url);
   if (request.method !== 'GET') return json({ error: 'Méthode non autorisée' }, 405, { Allow: 'GET' });
   if (url.pathname.startsWith('/api/odds')) return handleOdds(url, { cache, key: env.ODDS_API_KEY });
+  const lm = url.pathname.match(/^\/api\/lines\/([A-Z]{3})$/);
+  if (lm) {
+    try {
+      return await cached(cache, `https://lines.cache/${lm[1]}`, 1800, async () => {
+        const lines = await fetchLines(lm[1]);
+        if (!lines) throw new Error('parse');
+        return { source: 'dailyfaceoff', ...lines };
+      });
+    } catch {
+      return json({ source: null }, 200, { 'Cache-Control': 'public, max-age=300' });
+    }
+  }
 
   let upstream, ttl;
   if (url.pathname === '/api/news') {

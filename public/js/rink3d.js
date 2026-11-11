@@ -332,9 +332,9 @@ export function createRink(container, { onPick, small = false, shiftX = 0, autoR
         const x = sx * team.side, z = -sy * team.side;
         token.position.set(x, 7.5, z);
         token.userData.player = p;
-        const lt = new THREE.CanvasTexture(labelCanvas(p.short || p.name)); lt.colorSpace = THREE.SRGBColorSpace;
+        const lt = new THREE.CanvasTexture(labelCanvas(p.label || p.short || p.name)); lt.colorSpace = THREE.SRGBColorSpace;
         const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: lt, depthTest: false }));
-        label.scale.set(14, 2.6, 1); label.position.set(x, 1.6, z + 6);
+        label.scale.set(17, 3.2, 1); label.position.set(x, 1.6, z + 6);
         const ring = new THREE.Mesh(new THREE.RingGeometry(2.4, 3.1, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: team.color, transparent: true, opacity: 0.7 }));
         ring.position.set(x, 0.05, z);
         playersGroup.add(token, label, ring);

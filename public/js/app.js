@@ -1,4 +1,4 @@
-import { loadNight, loadScores, loadPlayByPlay, loadGameLog, loadGameOdds, shotsFromPbp, nyDate, shiftDate, normName, loadRightRail, loadNews } from './data.js';
+import { loadNight, loadScores, loadPlayByPlay, loadGameLog, loadGameOdds, shotsFromPbp, nyDate, shiftDate, normName, loadRightRail, loadNews, applyDailyFaceoff, gamePlayers } from './data.js';
 import { MARKETS, pct, odds2, mmss, fairOdds, edge, frenchOdds, ratingLabel } from './model.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -16,7 +16,7 @@ const state = {
   date: new URLSearchParams(location.search).get('date') || nyDate(),
   night: null, error: null, market: 'point', sort: 'point', q: '', team: '',
   odds: new Map(), // gameId -> { enabled, players }
-  rink: null, rinkGame: null, rinkMode: 'lineup', newsTeam: '',
+  rink: null, rinkGame: null, rinkMode: 'lineup', newsTeam: '', unit: 'L1', dfoLoaded: new Set(),
 };
 
 // ---------------- Slip (saved on this device only) ----------------
@@ -213,11 +213,49 @@ function viewMethod() {
 }
 
 function lineupBlock(t) {
-  const row = (ps) => ps.map((p) => `<button class="lu" data-player="${p.id}">${face(p, 'mini')}<span>${esc(p.short)}</span></button>`).join('');
+  const row = (ps) => ps.map((p) => `<button class="lu" data-player="${p.id}">${face(p, 'mini')}<span>${esc(p.short)}</span><em>${mmss(p.toi)}</em></button>`).join('');
+  const sel = (u) => (state.unit === u ? ' sel' : '');
   return `<div class="lineup" style="--tc:${t.color}"><h3>${logo(t, 28)} ${esc(t.short)}</h3>
-    ${t.lines.lines.map((l, i) => `<div class="lu-row"><small>L${i + 1}</small>${row(l)}</div>`).join('')}
-    ${t.lines.pairs.map((l, i) => `<div class="lu-row"><small>D${i + 1}</small>${row(l)}</div>`).join('')}
-    <div class="lu-row"><small>G</small>${t.starter ? `<span class="lu">${face(t.starter, 'mini')}<span>${esc(t.starter.short)}</span></span>` : '—'}</div></div>`;
+    ${t.lines.lines.map((l, i) => `<div class="lu-row${sel('L' + (i + 1))}"><button class="unit-tag" data-unit="L${i + 1}" aria-label="Voir le trio ${i + 1} sur la glace">L${i + 1}</button>${row(l)}</div>`).join('')}
+    ${t.lines.pairs.map((l, i) => `<div class="lu-row${sel('L' + (i + 1))}"><button class="unit-tag" data-unit="L${i + 1}" aria-label="Voir la paire ${i + 1} sur la glace">D${i + 1}</button>${row(l)}</div>`).join('')}
+    ${(t.pp || []).map((l, i) => `<div class="lu-row${sel('PP' + (i + 1))}"><button class="unit-tag pp" data-unit="PP${i + 1}" aria-label="Voir l’avantage numérique ${i + 1}">PP${i + 1}</button>${row(l)}</div>`).join('')}
+    <div class="lu-row"><span class="unit-tag g">G</span>${t.starter ? `<button class="lu" data-player="${t.starter.id}">${face(t.starter, 'mini')}<span>${esc(t.starter.short)}</span><em>${t.starter.rating}/100</em></button>` : '—'}</div>
+    ${t.injured?.length ? `<p class="fine inj">Blessés / absents : ${t.injured.map(esc).join(', ')}</p>` : ''}</div>`;
+}
+
+// Which players stand on the ice for a unit (L1–L4 = trio + pair of the same rank, PP1/PP2 = power play).
+function unitSlots(t, unit) {
+  const dfo = t.linesSource === 'dailyfaceoff';
+  if (unit.startsWith('PP')) {
+    const u = (t.pp || [])[+unit.slice(2) - 1];
+    if (u?.length) {
+      const d = u.filter((p) => p.pos === 'D'), f = u.filter((p) => p.pos !== 'D');
+      const C = f.find((p) => p.posCode === 'C') || f[0];
+      const rest = f.filter((p) => p !== C);
+      return { C, LW: rest[0], RW: rest[1], D1: d[0] || rest[2], D2: d[1] || rest[3] || rest[2], G: t.starter };
+    }
+    unit = 'L1';
+  }
+  const i = Math.max(0, +unit.slice(1) - 1);
+  const f = t.lines.lines[Math.min(i, t.lines.lines.length - 1)] || [];
+  const d = t.lines.pairs[Math.min(i, t.lines.pairs.length - 1)] || [];
+  let C, LW, RW;
+  if (dfo && f.length === 3) [LW, C, RW] = f;
+  else { C = f.find((p) => p.posCode === 'C') || f[1]; const w = f.filter((p) => p !== C); LW = w.find((p) => p.posCode === 'L') || w[0]; RW = w.find((p) => p !== LW); }
+  return { C, LW, RW, D1: d[0], D2: d[1], G: t.starter };
+}
+const UNIT_NAMES = { L1: '1re ligne', L2: '2e ligne', L3: '3e ligne', L4: '4e ligne', PP1: 'Avantage numérique 1', PP2: 'Avantage numérique 2' };
+function unitPanel(g) {
+  const col = (t) => {
+    const s = unitSlots(t, state.unit);
+    const order = [['LW', 'AG'], ['C', 'C'], ['RW', 'AD'], ['D1', 'D'], ['D2', 'D']];
+    return `<div class="unit-col" style="--tc:${t.color}"><h3>${logo(t, 24)} ${esc(t.abbr)} <small>${t.linesSource === 'dailyfaceoff' ? 'Daily Faceoff' : 'estimation'}</small></h3>
+      ${order.map(([k, lab]) => { const p = s[k]; if (!p) return ''; const pl = state.night.players.find((x) => x.id === p.id && x.gameId === g.id);
+        return `<button class="u-row" data-player="${p.id}">${face(p, 'mini')}<span><b>${esc(p.name)}</b><small>${esc(p.posLabel || lab)} · ${p.points} pts en ${p.gp} m.</small></span>
+          <span class="u-stat"><b>${mmss(p.toi)}</b><small>glace / m.</small></span><span class="u-stat"><b>${pl ? pct(pl.probs.point) : '—'}</b><small>1+ point</small></span></button>`; }).join('')}
+      ${s.G ? `<button class="u-row" data-player="${s.G.id}">${face(s.G, 'mini')}<span><b>${esc(s.G.name)}</b><small>Gardien · ${(s.G.savePct * 100 || 0).toFixed(1).replace('.', ',')} % d’arrêts</small></span><span class="u-stat"><b>${s.G.rating}</b><small>note /100</small></span></button>` : ''}</div>`;
+  };
+  return `<div class="unit-panel">${col(g.away)}${col(g.home)}</div>`;
 }
 
 function viewMatch(id) {
@@ -237,16 +275,18 @@ function viewMatch(id) {
     </section>
     <section id="ctx" class="ctx" style="--a:${g.away.color};--h:${g.home.color}"><div class="loading small"><span class="puck"></span>Chargement du contexte…</div></section>
     <section class="rink-wrap">
-      <div class="rink-bar"><h2>Patinoire 3D</h2>
+      <div class="rink-bar"><h2>Le stade en 3D</h2>
+        <div class="units" role="group" aria-label="Choisir la ligne sur la glace">${['L1', 'L2', 'L3', 'L4', ...(g.away.pp?.length || g.home.pp?.length ? ['PP1', 'PP2'] : [])].map((u) => `<button data-unit="${u}" aria-pressed="${state.unit === u}" title="${UNIT_NAMES[u]}">${u}</button>`).join('')}</div>
         <div class="seg" role="group" aria-label="Affichage de la patinoire">
           <button data-rink="lineup" aria-pressed="${state.rinkMode === 'lineup'}">Composition</button>
           <button data-rink="shots" aria-pressed="${state.rinkMode === 'shots'}" ${started ? '' : 'disabled title="Disponible dès le début du match"'}>Tirs &amp; buts</button>
         </div></div>
       <div id="rink" class="rink"><p class="rink-hint">Fais glisser pour tourner, pince ou molette pour zoomer, touche un joueur pour sa fiche.</p></div>
-      <p class="fine" id="rink-legend">${started ? '' : 'Sixième de départ estimé (trio 1, paire 1, gardien probable).'}</p>
+      <p class="fine" id="rink-legend">${esc(UNIT_NAMES[state.unit])} sur la glace · lignes ${g.away.linesSource === 'dailyfaceoff' || g.home.linesSource === 'dailyfaceoff' ? 'pressenties par Daily Faceoff' : state.dfoLoaded.has(g.id) ? 'estimées au temps de glace (Daily Faceoff indisponible)' : 'en cours de chargement…'}</p>
+      <div id="unit-panel">${unitPanel(g)}</div>
     </section>
     <section><h2>Duel de gardiens</h2><div class="goalie-grid two">${goalieCard(g.away.starter, g.away, g.home)}${goalieCard(g.home.starter, g.home, g.away)}</div></section>
-    <section><h2>Compositions estimées</h2><div class="lineups">${lineupBlock(g.away)}${lineupBlock(g.home)}</div></section>
+    <section><h2>Compositions ${g.away.linesSource === 'dailyfaceoff' ? '<span class="src">Daily Faceoff</span>' : '<span class="src">estimées</span>'}</h2><div class="lineups">${lineupBlock(g.away)}${lineupBlock(g.home)}</div></section>
     <section><div class="sec-head"><h2>Paris joueurs</h2><span class="fine">${odds?.enabled ? (Object.keys(odds.players || {}).length ? 'Cotes US converties (−15 % sur le gain)' : odds.error || 'Pas encore de cotes pour ce match') : odds ? 'Cotes : ajoute ta clé The Odds API pour les voir' : 'Chargement des cotes…'}</span></div>
       <div class="table-wrap"><table class="ptable"><thead><tr><th>Joueur</th>${MARKETS.map((m) => `<th>${esc(m.label)}</th>`).join('')}</tr></thead><tbody>
       ${ps.map((p) => `<tr><td><button class="link" data-player="${p.id}">${face(p, 'mini')}${esc(p.name)}</button><small>${esc(p.team)} · ${esc(p.posLabel)}</small></td>
@@ -386,16 +426,29 @@ async function mountRink(g, { small = false, shiftX = 0 } = {}) {
   updateScoreboard(g);
   state.rink.setCenterLogo(proxied(g.home.logoLight));
   const six = (t) => {
-    const l1 = t.lines.lines[0] || [], d1 = t.lines.pairs[0] || [];
-    const C = l1.find((p) => p.posCode === 'C') || l1[1];
-    const wings = l1.filter((p) => p !== C);
-    const lw = wings.find((p) => p.posCode === 'L') || wings[0];
-    const rw = wings.find((p) => p !== lw);
-    const mk = (p) => p && { ...p, headshot: proxied(p.headshot) };
-    return { C: mk(C), LW: mk(lw), RW: mk(rw), D1: mk(d1[0]), D2: mk(d1[1]), G: mk(t.starter) };
+    const sl = unitSlots(t, state.unit), out = {};
+    for (const [k, p] of Object.entries(sl)) if (p) out[k] = { ...p, headshot: proxied(p.headshot), label: `${p.short} · ${k === 'G' ? p.rating + '/100' : mmss(p.toi)}` };
+    return out;
   };
   await state.rink.setLineups([{ side: -1, color: g.away.color, players: six(g.away) }, { side: 1, color: g.home.color, players: six(g.home) }]);
   if (!small && state.rinkMode === 'shots') await showShots(g);
+}
+async function relineup(g) {
+  if (!state.rink || state.rinkGame !== g.id) return;
+  const six = (t) => {
+    const sl = unitSlots(t, state.unit), out = {};
+    for (const [k, p] of Object.entries(sl)) if (p) out[k] = { ...p, headshot: proxied(p.headshot), label: `${p.short} · ${k === 'G' ? p.rating + '/100' : mmss(p.toi)}` };
+    return out;
+  };
+  state.rink.setShots([]);
+  await state.rink.setLineups([{ side: -1, color: g.away.color, players: six(g.away) }, { side: 1, color: g.home.color, players: six(g.home) }]);
+}
+async function ensureDfo(g) {
+  if (state.dfoLoaded.has(g.id)) return;
+  state.dfoLoaded.add(g.id);
+  const changed = await applyDailyFaceoff(g, state.night.leagueGa);
+  if (changed) state.night.players = state.night.players.filter((p) => p.gameId !== g.id).concat(gamePlayers(g, state.night.leagueGa));
+  if (route().id === g.id) render();
 }
 async function showShots(g) {
   const pbp = await loadPlayByPlay(g.id);
@@ -460,6 +513,7 @@ function render() {
     if (g) {
       mountRink(g);
       fillContext(g);
+      ensureDfo(g);
       if (!state.odds.has(g.id)) loadGameOdds(g).then((o) => { state.odds.set(g.id, o); if (route().id === g.id) refreshMatchTable(); });
     }
   }
@@ -498,6 +552,21 @@ document.addEventListener('click', (e) => {
     return;
   }
   const pl = e.target.closest('[data-player]'); if (pl) { openPlayer(+pl.dataset.player); return; }
+  const un = e.target.closest('[data-unit]');
+  if (un) {
+    state.unit = un.dataset.unit;
+    const g = state.night.games.find((x) => x.id === route().id);
+    if (g) {
+      document.querySelectorAll('.units [data-unit]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.unit === state.unit)));
+      $('#unit-panel').innerHTML = unitPanel(g);
+      $('#rink-legend').firstChild && ($('#rink-legend').textContent = $('#rink-legend').textContent.replace(/^[^·]+/, UNIT_NAMES[state.unit] + ' sur la glace '));
+      document.querySelectorAll('.lu-row').forEach((r) => r.classList.toggle('sel', !!r.querySelector(`[data-unit="${state.unit}"]`)));
+      if (state.rinkMode !== 'lineup') { state.rinkMode = 'lineup'; document.querySelectorAll('[data-rink]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.rink === 'lineup'))); }
+      relineup(g);
+      if (!un.closest('.units')) $('#rink').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    return;
+  }
   const nw = e.target.closest('[data-news]'); if (nw) { state.newsTeam = nw.dataset.news; document.querySelectorAll('[data-news]').forEach((b) => b.setAttribute('aria-selected', String(b === nw))); fillArticles(); return; }
   const mk = e.target.closest('[data-market]'); if (mk) { state.market = mk.dataset.market; render(); return; }
   const so = e.target.closest('[data-sort]'); if (so) { state.sort = so.dataset.sort; render(); return; }
@@ -535,7 +604,8 @@ async function load() {
     const keepRink = (route().name === 'match' || route().name === '') && state.night && state.rink;
     const n = await loadNight(state.date);
     state.night = n;
-    if (keepRink) { updateLive(); } else render();
+    state.dfoLoaded.clear();
+    if (keepRink) { updateLive(); const r = route(); if (r.name === 'match') { const g = n.games.find((x) => x.id === r.id); if (g) ensureDfo(g); } } else render();
   } catch (err) { state.error = err.message; render(); }
   tickFresh();
 }

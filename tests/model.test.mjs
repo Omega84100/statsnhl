@@ -36,3 +36,25 @@ test('props summary uses median price', () => {
     { markets: [{ key: 'player_points', outcomes: [{ name: 'Over', description: 'Léon Draisaitl', price: 1.7, point: 0.5 }] }] }] });
   assert.equal(r[normName('Leon Draisaitl')].point, 1.6);
 });
+
+import { parseLines } from '../src/dailyfaceoff.js';
+test('daily faceoff: __NEXT_DATA__ groups', () => {
+  const players = [];
+  const ids = ['f1', 'f2', 'f3', 'f4'];
+  ids.forEach((g, i) => ['lw', 'c', 'rw'].forEach((p) => players.push({ name: `${p}${i}`, groupIdentifier: g, positionIdentifier: p + (i + 1) })));
+  ['d1', 'd2', 'd3'].forEach((g, i) => ['ld', 'rd'].forEach((p) => players.push({ name: `${p}${i}`, groupIdentifier: g, positionIdentifier: p + (i + 1) })));
+  players.push({ name: 'Goalie A', groupIdentifier: 'g', positionIdentifier: 'g1' });
+  const html = `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { combinations: { players } } } })}</script></html>`;
+  const r = parseLines(html);
+  assert.deepEqual(r.groups.f1.map((p) => p.name), ['lw0', 'c0', 'rw0']);
+  assert.equal(r.groups.d3.length, 2); assert.equal(r.groups.g[0].name, 'Goalie A');
+});
+test('daily faceoff: fallback on player links in page order', () => {
+  let html = '<p>Last updated: 2026-11-10T15:45:58.375Z</p>';
+  for (let i = 0; i < 40; i++) html += `<a href="/players/news/p-${i}/${1000 + i}"><img src="x.png"></a><a href="/players/news/p-${i}/${1000 + i}">Player ${i}</a>`;
+  const r = parseLines(html);
+  assert.deepEqual(r.groups.f1.map((p) => p.name), ['Player 0', 'Player 1', 'Player 2']);
+  assert.deepEqual(r.groups.d1.map((p) => p.name), ['Player 12', 'Player 13']);
+  assert.equal(r.groups.pp1.length, 5); assert.equal(r.groups.g[0].name, 'Player 36');
+  assert.equal(r.updated, '2026-11-10T15:45:58.375Z');
+});
