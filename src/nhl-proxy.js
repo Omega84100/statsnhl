@@ -105,7 +105,7 @@ export async function handleApi(request, { cache, env = {} } = {}) {
 
 // ---------- Player prop odds (The Odds API, free plan: 500 credits a month) ----------
 // The key stays on the server (secret ODDS_API_KEY). The events list is free;
-// one game's props cost 4 credits, so they are cached 3 hours and only loaded
+// one game's props cost 4 credits, so they are cached 24 hours and only loaded
 // when someone opens that game.
 const ODDS = 'https://api.the-odds-api.com/v4/sports/icehockey_nhl/';
 const PROP_MARKETS = 'player_points,player_goal_scorer_anytime,player_assists,player_shots_on_goal';
@@ -165,7 +165,7 @@ async function handleOdds(url, { cache, key }) {
     }
     const m = url.pathname.match(/^\/api\/odds\/event\/([a-f0-9]{32})$/);
     if (m) {
-      return await cached(cache, `https://odds.cache/event/${m[1]}`, 10800, async () => ({
+      return await cached(cache, `https://odds.cache/event/${m[1]}`, 86400, async () => ({
         enabled: true,
         players: summarizeProps(await call(`events/${m[1]}/odds?regions=us&oddsFormat=decimal&markets=${PROP_MARKETS}`)),
       }));

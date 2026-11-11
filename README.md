@@ -19,7 +19,7 @@ Créer une clé gratuite sur https://the-odds-api.com (plan Starter, 500 crédit
 - Cloudflare : Workers & Pages → statsnhl → Settings → Variables and Secrets → Add → type Secret.
 - Netlify : Project configuration → Environment variables → Add a variable.
 
-Les cotes US (médiane des bookmakers) sont converties en décimal, puis on garde 85 % du gain : 2,00 → 1,85. Les cotes d'un match ne sont chargées que quand on ouvre ce match (4 crédits), puis gardées 3 h.
+Les cotes US (médiane des bookmakers) sont converties en décimal, puis on garde 85 % du gain : 2,00 → 1,85. Les cotes d'un match ne sont chargées que quand on ouvre ce match (4 crédits), puis gardées 24 h.
 
 ## Tests
 
