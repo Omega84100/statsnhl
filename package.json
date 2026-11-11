@@ -1,0 +1,9 @@
+{
+  "name": "statsnhl",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "mock": "node tests/mock-server.mjs 8787"
+  }
+}

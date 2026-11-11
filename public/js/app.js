@@ -1,0 +1,438 @@
+import { loadNight, loadScores, loadPlayByPlay, loadGameLog, loadGameOdds, shotsFromPbp, nyDate, shiftDate, normName } from './data.js';
+import { MARKETS, pct, odds2, mmss, fairOdds, edge, frenchOdds, ratingLabel } from './model.js';
+
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const parisTime = (iso) => new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+const longDate = (d) => new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(d + 'T12:00:00Z'));
+const MK = Object.fromEntries(MARKETS.map((m) => [m.id, m]));
+const isLive = (s) => s === 'LIVE' || s === 'CRIT';
+const isDone = (s) => s === 'OFF' || s === 'FINAL';
+
+const state = {
+  date: new URLSearchParams(location.search).get('date') || nyDate(),
+  night: null, error: null, market: 'point', sort: 'point', q: '', team: '',
+  odds: new Map(), // gameId -> { enabled, players }
+  rink: null, rinkGame: null, rinkMode: 'lineup',
+};
+
+// ---------------- Slip (saved on this device only) ----------------
+let slip = [];
+try { slip = JSON.parse(localStorage.getItem('statsnhl-slip') || '[]'); } catch { slip = []; }
+const saveSlip = () => { try { localStorage.setItem('statsnhl-slip', JSON.stringify(slip)); } catch {} $('#slip-count').textContent = slip.length; };
+
+function addToSlip(p, marketId, odds) {
+  const key = `${p.id}:${marketId}`;
+  if (slip.some((s) => s.key === key)) { slip = slip.filter((s) => s.key !== key); }
+  else slip.push({ key, id: p.id, name: p.name, team: p.team, opp: p.opp, gameId: p.gameId, home: p.home, market: marketId, prob: p.probs[marketId], odds: odds || +fairOdds(p.probs[marketId]).toFixed(2), date: state.date });
+  saveSlip(); toast(slip.some((s) => s.key === key) ? 'Ajouté au combiné' : 'Retiré du combiné');
+  if (route().name !== 'match') render();
+}
+const inSlip = (id, m) => slip.some((s) => s.key === `${id}:${m}`);
+
+function renderSlip() {
+  const body = $('#slip-body');
+  if (!slip.length) { body.innerHTML = `<p class="empty">Ton combiné est vide. Clique sur <b>+</b> à côté d’un pari pour l’ajouter.</p>`; return; }
+  const stake = +(localStorage.getItem('statsnhl-stake') || 10);
+  const oddsTot = slip.reduce((a, s) => a * (s.odds || 1), 1);
+  const probTot = slip.reduce((a, s) => a * (s.prob || 0), 1);
+  const ev = probTot * oddsTot - 1;
+  body.innerHTML = `<ul class="slip-list">${slip.map((s, i) => `<li>
+      <div><b>${esc(s.name)}</b><small>${esc(MK[s.market]?.label)} · ${esc(s.team)} ${s.home ? 'vs' : '@'} ${esc(s.opp)} · modèle ${pct(s.prob)}</small></div>
+      <label class="odds-in">Cote<input inputmode="decimal" data-i="${i}" value="${String(s.odds).replace('.', ',')}" aria-label="Cote pour ${esc(s.name)}"></label>
+      <button class="icon-btn" data-del="${i}" aria-label="Retirer">✕</button></li>`).join('')}</ul>
+    <div class="slip-sum">
+      <div><small>Cote totale</small><b>${odds2(oddsTot)}</b></div>
+      <div><small>Chance estimée</small><b>${pct(probTot)}</b></div>
+      <div><small>Valeur</small><b class="${ev >= 0 ? 'pos' : 'neg'}">${ev >= 0 ? '+' : ''}${Math.round(ev * 100)} %</b></div>
+    </div>
+    <label class="stake">Mise (€)<input id="stake" inputmode="decimal" value="${stake}"></label>
+    <p class="gain">Gain possible : <b>${(stake * oddsTot).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</b></p>
+    <p class="fine">Les joueurs d’un même match sont liés : la vraie chance d’un combiné sur le même match est un peu différente. Valeur positive = la cote paie plus que ce que le modèle estime.</p>
+    <button class="ghost" id="slip-clear">Vider le combiné</button>`;
+}
+$('#slip-body').addEventListener('change', (e) => {
+  if (e.target.dataset.i != null) { const v = parseFloat(e.target.value.replace(',', '.')); if (v > 1) slip[+e.target.dataset.i].odds = v; saveSlip(); renderSlip(); }
+  if (e.target.id === 'stake') { try { localStorage.setItem('statsnhl-stake', String(parseFloat(e.target.value.replace(',', '.')) || 10)); } catch {} renderSlip(); }
+});
+$('#slip-body').addEventListener('click', (e) => {
+  const d = e.target.closest('[data-del]'); if (d) { slip.splice(+d.dataset.del, 1); saveSlip(); renderSlip(); }
+  if (e.target.id === 'slip-clear') { slip = []; saveSlip(); renderSlip(); }
+});
+$('#slip-btn').onclick = () => { renderSlip(); $('#slip').showModal(); };
+document.querySelectorAll('dialog').forEach((d) => {
+  d.addEventListener('click', (e) => { if (e.target === d || e.target.closest('[data-close]')) d.close(); });
+});
+
+let toastTimer;
+function toast(msg) {
+  let t = $('#toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; t.setAttribute('role', 'status'); document.body.append(t); }
+  t.textContent = msg; t.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), 1600);
+}
+
+// ---------------- Small building blocks ----------------
+const logo = (t, size = 40) => `<img class="logo" src="${esc(t.logo)}" alt="${esc(t.abbr)}" width="${size}" height="${size}" loading="lazy">`;
+const face = (p, cls = '') => `<img class="face ${cls}" src="${esc(p.headshot)}" alt="" width="64" height="64" loading="lazy" onerror="this.style.visibility='hidden'">`;
+function ratingChip(g) {
+  if (!g) return '<span class="rate na">?</span>';
+  const r = g.rating;
+  const tone = r >= 60 ? 'hi' : r >= 45 ? 'mid' : 'lo';
+  return `<span class="rate ${tone}" title="Note du gardien : ${r}/100 (${ratingLabel(r)})">${r}</span>`;
+}
+function gameStatus(g) {
+  if (isLive(g.state)) return `<span class="live-dot"></span>${g.intermission ? 'Pause' : `P${g.period ?? ''} · ${esc(g.clock ?? '')}`}`;
+  if (isDone(g.state)) return `Terminé${g.periodType && g.periodType !== 'REG' ? ' (' + esc(g.periodType === 'OT' ? 'prol.' : 'TB') + ')' : ''}`;
+  return `${parisTime(g.start)}`;
+}
+const scoreOrVs = (g) => (isLive(g.state) || isDone(g.state)) ? `<b class="score">${g.away.score ?? 0}<i>–</i>${g.home.score ?? 0}</b>` : '<span class="vs">@</span>';
+
+function pickCard(p, m, rank) {
+  const prob = p.probs[m];
+  const o = state.odds.get(p.gameId)?.players?.[normName(p.name)]?.[m];
+  const fr = frenchOdds(o);
+  const e = fr ? edge(prob, fr) : null;
+  return `<article class="pick" style="--tc:${state.night.games.find((g) => g.id === p.gameId)?.[p.home ? 'home' : 'away'].color}">
+    <span class="rank">${rank}</span>
+    <button class="pick-main" data-player="${p.id}" aria-label="Voir la fiche de ${esc(p.name)}">
+      ${face(p)}<div><small>${esc(p.team)} ${p.home ? 'vs' : '@'} ${esc(p.opp)} · ${esc(p.posLabel)}</small><h3>${esc(p.name)}</h3>
+      <span class="meta">${p.points} pts en ${p.gp} m. · ${mmss(p.toi)} de glace</span></div>
+    </button>
+    <div class="pick-nums">
+      <div><small>${esc(MK[m].label)}</small><b>${pct(prob)}</b></div>
+      <div><small>Cote juste</small><b>${odds2(fairOdds(prob))}</b></div>
+      <div><small>${fr ? 'Cote FR est.' : 'Gardien adv.'}</small><b>${fr ? odds2(fr) : (p.oppGoalie ? esc(p.oppGoalie.short.split(' ').pop()) + ' ' + ratingChip(p.oppGoalie) : '—')}</b></div>
+    </div>
+    <div class="bar"><i style="width:${Math.round(prob * 100)}%"></i></div>
+    <div class="pick-foot">
+      ${e != null ? `<span class="tag ${e > 0 ? 'good' : 'bad'}">${e > 0 ? 'Valeur +' : 'Valeur '}${Math.round(e * 100)}</span>` : ''}
+      ${p.b2b ? '<span class="tag warn">a joué hier</span>' : ''}
+      <button class="add ${inSlip(p.id, m) ? 'on' : ''}" data-add="${p.id}" data-m="${m}" aria-label="Ajouter au combiné">${inSlip(p.id, m) ? '✓' : '+'}</button>
+    </div>
+  </article>`;
+}
+
+// ---------------- Views ----------------
+function viewHome() {
+  const n = state.night;
+  if (!n.games.length) return `<section class="hero"><h1>Pas de match <span>${esc(longDate(n.date))}</span></h1><p class="lead">Utilise les flèches en haut pour changer de soirée.</p></section>`;
+  const best = [...n.players].sort((a, b) => b.probs.point - a.probs.point).slice(0, 6);
+  const liveN = n.games.filter((g) => isLive(g.state)).length;
+  return `<section class="hero">
+      <p class="kicker">${esc(longDate(n.date))} · heure de Paris</p>
+      <h1>${n.games.length} match${n.games.length > 1 ? 's' : ''} <span>ce soir</span></h1>
+      <p class="lead">${liveN ? `<span class="live-dot"></span>${liveN} en direct · ` : ''}${n.players.length} joueurs analysés, gardiens notés sur 100, compositions estimées. Clique sur un match pour la patinoire 3D.</p>
+    </section>
+    <section class="games">${n.games.map((g) => `
+      <a class="game" href="#/match/${g.id}" style="--a:${g.away.color};--h:${g.home.color}">
+        <div class="g-status">${gameStatus(g)}</div>
+        <div class="g-teams">
+          <div class="g-team">${logo(g.away, 56)}<b>${esc(g.away.abbr)}</b><small>${esc(g.away.standing?.record || '')}</small></div>
+          ${scoreOrVs(g)}
+          <div class="g-team">${logo(g.home, 56)}<b>${esc(g.home.abbr)}</b><small>${esc(g.home.standing?.record || '')}</small></div>
+        </div>
+        <div class="g-goalies">
+          <span>${ratingChip(g.away.starter)} ${esc(g.away.starter?.short || '—')}</span>
+          <span>${esc(g.home.starter?.short || '—')} ${ratingChip(g.home.starter)}</span>
+        </div>
+        ${g.away.b2b || g.home.b2b ? `<div class="g-warn">${[g.away, g.home].filter((t) => t.b2b).map((t) => esc(t.abbr)).join(', ')} a joué hier soir</div>` : ''}
+      </a>`).join('')}
+    </section>
+    <section><div class="sec-head"><h2>Les plus probables ce soir</h2><a class="more" href="#/paris">Tous les paris →</a></div>
+      <div class="grid">${best.map((p, i) => pickCard(p, 'point', i + 1)).join('')}</div></section>`;
+}
+
+function viewPicks() {
+  const n = state.night, m = state.market;
+  const list = [...n.players].sort((a, b) => b.probs[m] - a.probs[m]).slice(0, 24);
+  const oddsOn = [...state.odds.values()].some((o) => o.enabled);
+  return `<section><h1 class="h1s">Meilleurs paris</h1>
+    <p class="lead">Classés par probabilité du modèle. La « cote juste » est la cote minimale pour que le pari vaille le coup.</p>
+    <div class="chips" role="tablist">${MARKETS.map((x) => `<button role="tab" aria-selected="${x.id === m}" data-market="${x.id}">${esc(x.label)}</button>`).join('')}</div>
+    <button class="ghost" id="load-all-odds">${oddsOn ? 'Cotes chargées' : 'Charger les cotes de tous les matchs'}</button>
+    <div class="grid">${list.map((p, i) => pickCard(p, m, i + 1)).join('')}</div></section>`;
+}
+
+function goalieCard(g, team, opp) {
+  if (!g) return `<div class="goalie-card"><p>Gardien inconnu</p></div>`;
+  return `<div class="goalie-card" style="--tc:${team.color}">
+    ${face(g, 'big')}
+    <div class="gc-body"><small>${esc(team.abbr)}${opp ? ' vs ' + esc(opp.abbr) : ''} · ${team.b2b ? 'probable (2e soir de suite)' : 'titulaire probable'}</small>
+      <h3>${esc(g.name)}</h3>
+      <div class="gauge" role="img" aria-label="Note ${g.rating} sur 100"><i style="width:${g.rating}%"></i></div>
+      <p class="gc-line"><b class="gc-rate">${g.rating}</b><span>/100 · ${ratingLabel(g.rating)}</span></p>
+      <dl><div><dt>Arrêts</dt><dd>${g.savePct != null ? (g.savePct * 100).toFixed(1).replace('.', ',') + ' %' : '—'}</dd></div>
+      <div><dt>Moy. buts</dt><dd>${g.gaa != null ? g.gaa.toFixed(2).replace('.', ',') : '—'}</dd></div>
+      <div><dt>Bilan</dt><dd>${g.wins}-${g.losses}-${g.otl}</dd></div>
+      <div><dt>Titu.</dt><dd>${g.starts}</dd></div></dl>
+    </div></div>`;
+}
+
+function viewGoalies() {
+  const n = state.night;
+  const list = n.games.flatMap((g) => [[g.away.starter, g.away, g.home], [g.home.starter, g.home, g.away]]).filter((x) => x[0]).sort((a, b) => b[0].rating - a[0].rating);
+  return `<section><h1 class="h1s">Gardiens du soir</h1>
+    <p class="lead">Note sur 100 : 70 % pourcentage d’arrêts, 30 % moyenne de buts encaissés, ramenée vers 50 quand le gardien a peu joué. Plus la note est basse, plus c’est intéressant pour les attaquants d’en face.</p>
+    <div class="goalie-grid">${list.map(([g, t, o]) => goalieCard(g, t, o)).join('')}</div></section>`;
+}
+
+function viewPlayers() {
+  const n = state.night;
+  const q = normName(state.q);
+  const list = n.players.filter((p) => (!q || normName(p.name).includes(q)) && (!state.team || p.team === state.team))
+    .sort((a, b) => (state.sort === 'name' ? a.name.localeCompare(b.name) : (b.probs[state.sort] ?? 0) - (a.probs[state.sort] ?? 0)));
+  const teams = [...new Set(n.players.map((p) => p.team))].sort();
+  return `<section><h1 class="h1s">Tous les joueurs</h1>
+    <div class="filters"><input id="q" type="search" placeholder="Chercher un joueur" value="${esc(state.q)}" aria-label="Chercher un joueur">
+      <select id="team" aria-label="Équipe"><option value="">Toutes les équipes</option>${teams.map((t) => `<option ${t === state.team ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div class="table-wrap"><table class="ptable"><thead><tr><th><button data-sort="name">Joueur</button></th><th>Match</th><th>Glace</th>
+      ${MARKETS.map((m) => `<th><button data-sort="${m.id}" aria-sort="${state.sort === m.id ? 'descending' : 'none'}">${esc(m.label)}</button></th>`).join('')}</tr></thead>
+    <tbody>${list.slice(0, 400).map((p) => `<tr><td><button class="link" data-player="${p.id}">${face(p, 'mini')}${esc(p.name)}</button><small>${esc(p.posLabel)}</small></td>
+      <td>${esc(p.team)} ${p.home ? 'vs' : '@'} ${esc(p.opp)}</td><td>${mmss(p.toi)}</td>
+      ${MARKETS.map((m) => `<td class="num"><button class="cell ${inSlip(p.id, m.id) ? 'on' : ''}" data-add="${p.id}" data-m="${m.id}" title="Ajouter au combiné">${pct(p.probs[m.id])}</button></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    <p class="fine">Clique sur un pourcentage pour l’ajouter au combiné.</p></section>`;
+}
+
+function viewMethod() {
+  return `<section class="prose"><h1 class="h1s">Méthode</h1>
+  <h2>D’où viennent les données</h2><p>Tout vient de l’API officielle de la NHL, rechargée automatiquement : calendrier et scores toutes les 30 secondes pendant les matchs, statistiques et effectifs toutes les 30 minutes. Rien n’est écrit à la main dans la page.</p>
+  <h2>Probabilité d’un pari</h2><p>Pour chaque joueur, on part de sa moyenne de la saison (points, buts, passes ou tirs par match), lissée avec une moyenne de la ligue quand il a peu joué. On l’ajuste avec la note du gardien adverse, la défense adverse (buts encaissés par match), le fait de jouer à domicile et un éventuel 2e match en 2 soirs. On en tire la probabilité avec une loi de Poisson.</p>
+  <h2>Note du gardien</h2><p>Sur 100 : 70 % pourcentage d’arrêts (87,5 % = 0, 93 % = 100), 30 % moyenne de buts encaissés (3,8 = 0, 2,0 = 100), ramenée vers 50 tant qu’il a peu de titularisations.</p>
+  <h2>Compositions</h2><p>Avant le match, la NHL ne publie pas les trios. Ils sont estimés à partir du temps de glace moyen : les 12 attaquants et 6 défenseurs qui jouent le plus. Le gardien probable est celui qui a le plus de titularisations, sauf si l’équipe a joué la veille.</p>
+  <h2>Cotes</h2><p>Les cotes américaines (médiane des bookmakers US) sont converties en cotes décimales puis on retire 15 % sur le gain pour estimer la cote française : 2,00 aux US devient 1,85. La « valeur » compare cette cote à la probabilité du modèle.</p>
+  <h2>Limites</h2><p>Les blessures de dernière minute et les changements de trios ne sont pas connus à l’avance. C’est une aide pour choisir, pas une garantie.</p></section>`;
+}
+
+function lineupBlock(t) {
+  const row = (ps) => ps.map((p) => `<button class="lu" data-player="${p.id}">${face(p, 'mini')}<span>${esc(p.short)}</span></button>`).join('');
+  return `<div class="lineup" style="--tc:${t.color}"><h3>${logo(t, 28)} ${esc(t.short)}</h3>
+    ${t.lines.lines.map((l, i) => `<div class="lu-row"><small>L${i + 1}</small>${row(l)}</div>`).join('')}
+    ${t.lines.pairs.map((l, i) => `<div class="lu-row"><small>D${i + 1}</small>${row(l)}</div>`).join('')}
+    <div class="lu-row"><small>G</small>${t.starter ? `<span class="lu">${face(t.starter, 'mini')}<span>${esc(t.starter.short)}</span></span>` : '—'}</div></div>`;
+}
+
+function viewMatch(id) {
+  const g = state.night.games.find((x) => x.id === id);
+  if (!g) return `<section><p class="lead">Match introuvable pour cette date. <a href="#/">Retour aux matchs</a></p></section>`;
+  const started = isLive(g.state) || isDone(g.state);
+  const ps = state.night.players.filter((p) => p.gameId === id).sort((a, b) => b.probs.point - a.probs.point);
+  const st = (t) => t.standing ? `${t.standing.record} · ${t.standing.points} pts · 10 derniers ${t.standing.l10}${t.standing.streak ? ' · série ' + t.standing.streak : ''}` : '';
+  const odds = state.odds.get(id);
+  return `<section class="match-head" style="--a:${g.away.color};--h:${g.home.color}">
+      <a class="back" href="#/">← Tous les matchs</a>
+      <div class="mh">
+        <div class="mh-team">${logo(g.away, 84)}<h2>${esc(g.away.name)}</h2><small>${esc(st(g.away))}</small></div>
+        <div class="mh-mid"><div id="mh-score">${scoreOrVs(g)}</div><div class="g-status" id="mh-status">${gameStatus(g)}</div><small>${esc(g.venue)}</small></div>
+        <div class="mh-team">${logo(g.home, 84)}<h2>${esc(g.home.name)}</h2><small>${esc(st(g.home))}</small></div>
+      </div>
+    </section>
+    <section class="rink-wrap">
+      <div class="rink-bar"><h2>Patinoire 3D</h2>
+        <div class="seg" role="group" aria-label="Affichage de la patinoire">
+          <button data-rink="lineup" aria-pressed="${state.rinkMode === 'lineup'}">Composition</button>
+          <button data-rink="shots" aria-pressed="${state.rinkMode === 'shots'}" ${started ? '' : 'disabled title="Disponible dès le début du match"'}>Tirs &amp; buts</button>
+        </div></div>
+      <div id="rink" class="rink"><p class="rink-hint">Fais glisser pour tourner, pince ou molette pour zoomer, touche un joueur pour sa fiche.</p></div>
+      <p class="fine" id="rink-legend">${started ? '' : 'Sixième de départ estimé (trio 1, paire 1, gardien probable).'}</p>
+    </section>
+    <section><h2>Duel de gardiens</h2><div class="goalie-grid two">${goalieCard(g.away.starter, g.away, g.home)}${goalieCard(g.home.starter, g.home, g.away)}</div></section>
+    <section><h2>Compositions estimées</h2><div class="lineups">${lineupBlock(g.away)}${lineupBlock(g.home)}</div></section>
+    <section><div class="sec-head"><h2>Paris joueurs</h2><span class="fine">${odds?.enabled ? (Object.keys(odds.players || {}).length ? 'Cotes US converties (−15 % sur le gain)' : odds.error || 'Pas encore de cotes pour ce match') : odds ? 'Cotes : ajoute ta clé The Odds API pour les voir' : 'Chargement des cotes…'}</span></div>
+      <div class="table-wrap"><table class="ptable"><thead><tr><th>Joueur</th>${MARKETS.map((m) => `<th>${esc(m.label)}</th>`).join('')}</tr></thead><tbody>
+      ${ps.map((p) => `<tr><td><button class="link" data-player="${p.id}">${face(p, 'mini')}${esc(p.name)}</button><small>${esc(p.team)} · ${esc(p.posLabel)}</small></td>
+        ${MARKETS.map((m) => { const o = frenchOdds(odds?.players?.[normName(p.name)]?.[m.id]); const e = o ? edge(p.probs[m.id], o) : null;
+          return `<td class="num"><button class="cell ${inSlip(p.id, m.id) ? 'on' : ''}" data-add="${p.id}" data-m="${m.id}">${pct(p.probs[m.id])}${o ? `<small class="${e > 0 ? 'pos' : ''}">${odds2(o)}</small>` : ''}</button></td>`; }).join('')}</tr>`).join('')}
+      </tbody></table></div></section>`;
+}
+
+// ---------------- Rink wiring ----------------
+async function mountRink(g) {
+  const el = $('#rink'); if (!el) return;
+  let mod;
+  try { mod = await import('./rink3d.js'); } catch { el.innerHTML = '<p class="rink-hint">La 3D n’a pas pu se charger sur cet appareil.</p>'; return; }
+  if (state.rink) state.rink.dispose();
+  try {
+    state.rink = mod.createRink(el, { onPick: (p) => openPlayer(p.id) });
+  } catch { el.innerHTML = '<p class="rink-hint">Ton navigateur ne gère pas la 3D (WebGL).</p>'; return; }
+  state.rinkGame = g.id;
+  const proxied = (u) => u ? u.replace('https://assets.nhle.com/', '/api/img/') : null;
+  state.rink.setCenterLogo(proxied(g.home.logoLight));
+  const six = (t) => {
+    const l1 = t.lines.lines[0] || [], d1 = t.lines.pairs[0] || [];
+    const C = l1.find((p) => p.posCode === 'C') || l1[1];
+    const wings = l1.filter((p) => p !== C);
+    const mk = (p) => p && { ...p, headshot: proxied(p.headshot) };
+    return { C: mk(C), LW: mk(wings.find((p) => p.posCode === 'L') || wings[0]), RW: mk(wings.find((p) => p.posCode === 'R' && p !== (wings.find((x) => x.posCode === 'L') || wings[0])) || wings[1]), D1: mk(d1[0]), D2: mk(d1[1]), G: mk(t.starter) };
+  };
+  await state.rink.setLineups([{ side: -1, color: g.away.color, players: six(g.away) }, { side: 1, color: g.home.color, players: six(g.home) }]);
+  if (state.rinkMode === 'shots') await showShots(g);
+}
+async function showShots(g) {
+  const pbp = await loadPlayByPlay(g.id);
+  if (!pbp || !state.rink || state.rinkGame !== g.id) return;
+  const homeId = pbp.homeTeam?.id;
+  const shots = shotsFromPbp(pbp, homeId, { home: parseInt(g.home.color.slice(1), 16), away: parseInt(g.away.color.slice(1), 16) });
+  state.rink.setShots(state.rinkMode === 'shots' ? shots : []);
+  const goals = shots.filter((s) => s.goal).length;
+  $('#rink-legend').textContent = state.rinkMode === 'shots'
+    ? `${shots.length} tirs cadrés dont ${goals} but${goals > 1 ? 's' : ''} (en or). ${g.away.abbr} attaque vers la droite, ${g.home.abbr} vers la gauche.`
+    : 'Sixième de départ estimé (trio 1, paire 1, gardien probable).';
+}
+
+// ---------------- Player sheet ----------------
+async function openPlayer(id) {
+  const p = state.night.players.find((x) => x.id === id);
+  const goalie = !p && state.night.games.flatMap((g) => [g.away, g.home]).flatMap((t) => t.goalies.map((x) => ({ ...x, t }))).find((x) => x.id === id);
+  const dlg = $('#player');
+  if (goalie) {
+    $('#player-title').textContent = goalie.name;
+    $('#player-body').innerHTML = goalieCard(goalie, goalie.t, null);
+    dlg.showModal(); return;
+  }
+  if (!p) return;
+  const odds = state.odds.get(p.gameId)?.players?.[normName(p.name)] || {};
+  $('#player-title').textContent = p.name;
+  $('#player-body').innerHTML = `<div class="ps-head">${face(p, 'big')}<div><small>${esc(p.team)} ${p.home ? 'vs' : '@'} ${esc(p.opp)} · ${esc(p.posLabel)}${p.number ? ' · #' + p.number : ''}</small>
+      <p>${p.gp} matchs · ${p.goals} buts · ${p.assists} passes · ${p.points} pts · ${p.shots} tirs · ${mmss(p.toi)} de glace</p>
+      ${p.oppGoalie ? `<p>Gardien adverse probable : <b>${esc(p.oppGoalie.name)}</b> ${ratingChip(p.oppGoalie)}</p>` : ''}</div></div>
+    <table class="ptable compact"><thead><tr><th>Pari</th><th>Modèle</th><th>Cote juste</th><th>Cote FR est.</th><th></th></tr></thead><tbody>
+    ${MARKETS.map((m) => { const fr = frenchOdds(odds[m.id]); return `<tr><td>${esc(m.label)}</td><td class="num">${pct(p.probs[m.id])}</td><td class="num">${odds2(fairOdds(p.probs[m.id]))}</td><td class="num">${fr ? odds2(fr) : '—'}</td>
+      <td><button class="add ${inSlip(p.id, m.id) ? 'on' : ''}" data-add="${p.id}" data-m="${m.id}" aria-label="Ajouter ${esc(m.label)} au combiné">${inSlip(p.id, m.id) ? '✓' : '+'}</button></td></tr>`; }).join('')}
+    </tbody></table>
+    <h3>5 derniers matchs</h3><div id="glog" class="glog">Chargement…</div>`;
+  dlg.showModal();
+  const log = await loadGameLog(id);
+  const games = (log?.gameLog || []).slice(0, 5);
+  $('#glog').innerHTML = games.length ? `<div class="glog-row">${games.map((x) => `<div class="glog-cell ${x.points ? 'hit' : ''}"><small>${esc(x.gameDate?.slice(5).split('-').reverse().join('/'))} ${x.homeRoadFlag === 'H' ? 'vs' : '@'} ${esc(x.opponentAbbrev)}</small><b>${x.goals}+${x.assists}</b><span>${x.shots} tirs · ${esc(x.toi)}</span></div>`).join('')}</div>` : 'Pas de match récent.';
+}
+
+// ---------------- Router & render ----------------
+function route() {
+  const h = location.hash.replace(/^#\/?/, '');
+  const m = h.match(/^match\/(\d+)/);
+  return m ? { name: 'match', id: +m[1] } : { name: h || '' };
+}
+
+function render() {
+  const r = route();
+  document.querySelectorAll('.tabs a').forEach((a) => a.setAttribute('aria-current', a.dataset.route === r.name ? 'page' : 'false'));
+  const view = $('#view');
+  if (state.error && !state.night) { view.innerHTML = `<div class="error"><h2>Données indisponibles</h2><p>${esc(state.error)}</p><button class="primary" id="retry">Réessayer</button></div>`; return; }
+  if (!state.night) { view.innerHTML = '<div class="loading"><span class="puck"></span>Chargement des données NHL…</div>'; return; }
+  if (r.name !== 'match' && state.rink) { state.rink.dispose(); state.rink = null; state.rinkGame = null; }
+  const html = r.name === 'match' ? viewMatch(r.id) : r.name === 'paris' ? viewPicks() : r.name === 'gardiens' ? viewGoalies() : r.name === 'joueurs' ? viewPlayers() : r.name === 'methode' ? viewMethod() : viewHome();
+  view.innerHTML = html;
+  if (r.name === 'match') {
+    const g = state.night.games.find((x) => x.id === r.id);
+    if (g) {
+      mountRink(g);
+      if (!state.odds.has(g.id)) loadGameOdds(g).then((o) => { state.odds.set(g.id, o); if (route().id === g.id) refreshMatchTable(); });
+    }
+  }
+}
+// Re-render the match page without rebuilding the 3D scene.
+function refreshMatchTable() {
+  const r = route(); const g = state.night.games.find((x) => x.id === r.id); if (!g) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = viewMatch(r.id);
+  const sections = $('#view').querySelectorAll('section'), fresh = tmp.querySelectorAll('section');
+  sections[sections.length - 1].replaceWith(fresh[fresh.length - 1]);
+}
+
+document.addEventListener('click', (e) => {
+  const add = e.target.closest('[data-add]');
+  if (add) {
+    const p = state.night.players.find((x) => x.id === +add.dataset.add);
+    const fr = frenchOdds(state.odds.get(p.gameId)?.players?.[normName(p.name)]?.[add.dataset.m]);
+    addToSlip(p, add.dataset.m, fr);
+    add.classList.toggle('on', inSlip(p.id, add.dataset.m));
+    if (add.classList.contains('add')) add.textContent = inSlip(p.id, add.dataset.m) ? '✓' : '+';
+    return;
+  }
+  const pl = e.target.closest('[data-player]'); if (pl) { openPlayer(+pl.dataset.player); return; }
+  const mk = e.target.closest('[data-market]'); if (mk) { state.market = mk.dataset.market; render(); return; }
+  const so = e.target.closest('[data-sort]'); if (so) { state.sort = so.dataset.sort; render(); return; }
+  const rk = e.target.closest('[data-rink]');
+  if (rk && !rk.disabled) {
+    state.rinkMode = rk.dataset.rink;
+    document.querySelectorAll('[data-rink]').forEach((b) => b.setAttribute('aria-pressed', String(b === rk)));
+    const g = state.night.games.find((x) => x.id === route().id);
+    if (g) showShots(g);
+    return;
+  }
+  if (e.target.id === 'retry') load();
+  if (e.target.id === 'load-all-odds') {
+    e.target.textContent = 'Chargement…';
+    Promise.all(state.night.games.map((g) => state.odds.has(g.id) ? null : loadGameOdds(g).then((o) => state.odds.set(g.id, o)))).then(render);
+  }
+});
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'q') { state.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); }
+  if (e.target.id === 'team') { state.team = e.target.value; render(); }
+});
+addEventListener('hashchange', () => { render(); scrollTo({ top: 0 }); });
+
+// ---------------- Loading & automatic updates ----------------
+function setDateUi() {
+  $('#day').value = state.date;
+  const today = nyDate();
+  $('#day-text').textContent = state.date === today ? 'Ce soir' : state.date === shiftDate(today, -1) ? 'Hier soir' : state.date === shiftDate(today, 1) ? 'Demain' : longDate(state.date);
+}
+async function load() {
+  setDateUi();
+  state.error = null;
+  if (!state.night || state.night.date !== state.date) { state.night = null; state.odds.clear(); render(); }
+  try {
+    const keepRink = route().name === 'match' && state.night && state.rink;
+    const n = await loadNight(state.date);
+    state.night = n;
+    if (keepRink) { updateLive(); } else render();
+  } catch (err) { state.error = err.message; render(); }
+  tickFresh();
+}
+function changeDate(d) {
+  state.date = d;
+  const u = new URL(location.href); if (d === nyDate()) u.searchParams.delete('date'); else u.searchParams.set('date', d);
+  history.replaceState(null, '', u);
+  if (route().name === 'match') location.hash = '#/';
+  load();
+}
+$('#prev').onclick = () => changeDate(shiftDate(state.date, -1));
+$('#next').onclick = () => changeDate(shiftDate(state.date, 1));
+$('#day').onchange = (e) => e.target.value && changeDate(e.target.value);
+
+function tickFresh() {
+  const n = state.night; if (!n) return;
+  const min = Math.floor((Date.now() - n.fetchedAt) / 60000);
+  const live = n.games.some((g) => isLive(g.state));
+  $('#fresh').innerHTML = `${live ? '<span class="live-dot"></span>Direct · ' : ''}à jour ${min < 1 ? 'à l’instant' : `il y a ${min} min`}`;
+}
+
+// Scores: every 30 s while a game is live (one cheap request).
+async function updateLive() {
+  const n = state.night; if (!n) return;
+  const live = await loadScores(n.date);
+  for (const g of n.games) {
+    const l = live.get(g.id); if (!l) continue;
+    g.state = l.gameState; g.period = l.periodDescriptor?.number ?? g.period; g.periodType = l.periodDescriptor?.periodType ?? g.periodType;
+    g.clock = l.clock?.timeRemaining ?? g.clock; g.intermission = !!l.clock?.inIntermission;
+    g.away.score = l.awayTeam?.score ?? g.away.score; g.home.score = l.homeTeam?.score ?? g.home.score;
+  }
+  const r = route();
+  if (r.name === 'match') {
+    const g = n.games.find((x) => x.id === r.id);
+    if (g) {
+      $('#mh-score') && ($('#mh-score').innerHTML = scoreOrVs(g));
+      $('#mh-status') && ($('#mh-status').innerHTML = gameStatus(g));
+      const sb = document.querySelector('[data-rink="shots"]'); if (sb && (isLive(g.state) || isDone(g.state))) sb.disabled = false;
+      if (state.rinkMode === 'shots') showShots(g);
+    }
+  } else if (r.name === '' && !document.querySelector('dialog[open]')) render();
+  tickFresh();
+}
+setInterval(() => { if (document.hidden || !state.night) return; if (state.night.games.some((g) => isLive(g.state) || (Date.parse(g.start) < Date.now() && !isDone(g.state)))) updateLive(); }, 30000);
+// Full refresh (stats, goalies, lineups) every 10 minutes, and when coming back to the tab.
+setInterval(() => { if (!document.hidden) load(); }, 600000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.night && Date.now() - state.night.fetchedAt > 300000) load(); });
+setInterval(tickFresh, 30000);
+
+saveSlip();
+load();
