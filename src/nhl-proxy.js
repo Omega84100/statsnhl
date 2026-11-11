@@ -37,7 +37,11 @@ export async function handleApi(request, { cache, env = {} } = {}) {
   if (url.pathname.startsWith('/api/odds')) return handleOdds(url, { cache, key: env.ODDS_API_KEY });
 
   let upstream, ttl;
-  if (url.pathname.startsWith('/api/img/')) {
+  if (url.pathname === '/api/news') {
+    // Official NHL.com articles in French (same feed as nhl.com/fr/news).
+    upstream = 'https://forge-dapi.d3.nhle.com/v2/content/fr-ca/stories?$limit=60';
+    ttl = 900;
+  } else if (url.pathname.startsWith('/api/img/')) {
     const path = url.pathname.slice('/api/img/'.length);
     if (!IMG.test(path)) return json({ error: 'Image inconnue' }, 404);
     upstream = 'https://assets.nhle.com/' + path;

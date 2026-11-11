@@ -19,7 +19,7 @@ section{padding:22px 0}
 .day{display:flex;align-items:center;gap:6px}
 .day-label{position:relative;display:block;min-width:120px;text-align:center;font-weight:600;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .day-label span{display:inline-block}.day-label span::first-letter{text-transform:uppercase}.day-label input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
-.icon-btn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--card);font-size:20px;line-height:1;display:grid;place-items:center;flex:none}
+.icon-btn{width:44px;height:44px;color:var(--ink);border-radius:10px;border:1px solid var(--line);background:var(--card);font-size:20px;line-height:1;display:grid;place-items:center;flex:none}
 .icon-btn:hover{border-color:var(--ice2)}
 .top-actions{display:flex;align-items:center;gap:12px}
 .fresh{font-size:12px;color:var(--ink3);white-space:nowrap}
@@ -60,7 +60,7 @@ section{padding:22px 0}
 
 /* pick cards */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;margin-top:16px}
-.pick{position:relative;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--tc,var(--ice2));border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px}
+.pick{position:relative;background:radial-gradient(120% 70% at 0% 0%,color-mix(in srgb,var(--tc,var(--ice2)) 20%,transparent),transparent 60%),var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px}
 .rank{position:absolute;top:12px;right:14px;font:800 20px 'Barlow Condensed';color:var(--ink3)}
 .pick-main{display:flex;gap:12px;align-items:center;background:none;border:0;padding:0;text-align:left}
 .pick-main h3{font-size:24px}.pick-main small,.meta{display:block;color:var(--ink3);font-size:12px}
@@ -87,7 +87,7 @@ section{padding:22px 0}
 /* goalies */
 .goalie-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:16px}
 .goalie-grid.two{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-.goalie-card{display:flex;gap:16px;background:var(--card);border:1px solid var(--line);border-top:4px solid var(--tc,var(--ice2));border-radius:var(--r);padding:16px}
+.goalie-card{display:flex;gap:16px;background:radial-gradient(120% 80% at 0% 0%,color-mix(in srgb,var(--tc,var(--ice2)) 22%,transparent),transparent 60%),var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
 .gc-body{flex:1;min-width:0}.gc-body small{color:var(--ink3);font-size:12px}.gc-body h3{font-size:26px;margin:2px 0 8px}
 .gauge{height:8px;border-radius:4px;background:linear-gradient(90deg,#ef969e,#e5be78 45%,#7ee0a8);position:relative;opacity:.9}
 .gauge i{position:absolute;top:-4px;bottom:-4px;left:0;border-right:3px solid #fff;box-shadow:2px 0 6px #000a;border-radius:2px}
@@ -109,7 +109,7 @@ dt{font-size:11px;color:var(--ink3)}dd{margin:0;font-weight:600;font-variant-num
 .rink canvas{display:block}
 .rink-hint{position:absolute;left:12px;bottom:8px;margin:0;font-size:12px;color:var(--ink3);pointer-events:none;z-index:1}
 .lineups{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.lineup{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--tc);border-radius:var(--r);padding:14px}
+.lineup{background:radial-gradient(120% 60% at 0% 0%,color-mix(in srgb,var(--tc) 20%,transparent),transparent 60%),var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px}
 .lineup h3{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .lu-row{display:flex;align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--line);flex-wrap:wrap}
 .lu-row small{width:26px;color:var(--ink3);font-weight:700}
@@ -178,3 +178,80 @@ dialog::backdrop{background:#030b1bd9;backdrop-filter:blur(4px)}
   .grid,.goalie-grid{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* ---------- 3D hero on the home page ---------- */
+.hero3d{position:relative;margin:18px 0 6px;padding:0;border-radius:20px;overflow:hidden;border:1px solid var(--line);min-height:460px;background:radial-gradient(ellipse at 70% 30%,color-mix(in srgb,var(--h) 30%,#0b1730),#060b16 70%)}
+.hero-rink{position:absolute;inset:0;height:auto;border:0;border-radius:0;background:transparent}
+.hero-overlay{position:relative;z-index:2;max-width:560px;padding:34px 32px;pointer-events:none;background:linear-gradient(90deg,#060b16f0 0%,#060b16b0 60%,transparent);min-height:460px;display:flex;flex-direction:column;justify-content:flex-end}
+.hero-overlay>*{pointer-events:auto}
+.hero3d h1{text-shadow:0 4px 30px #000}
+.feature{display:inline-flex;align-items:center;gap:12px;margin-top:18px;padding:10px 14px;border-radius:14px;background:#0e1a30cc;border:1px solid color-mix(in srgb,var(--h) 60%,var(--line));color:var(--ink);text-decoration:none;backdrop-filter:blur(6px);flex-wrap:wrap;align-self:flex-start;transition:transform .2s,border-color .2s}
+.feature:hover{transform:translateY(-2px);border-color:var(--ice)}
+.feature span{display:grid;font:700 20px 'Barlow Condensed'}.feature small{font:600 11px 'DM Sans';letter-spacing:1.2px;text-transform:uppercase;color:var(--gold)}
+.feature b{color:var(--ice);font-size:14px}
+.rink{height:clamp(300px,56vw,620px)}
+.match-head .mh{box-shadow:0 20px 60px #0008}
+
+/* ---------- Match context ---------- */
+.ctx h2{margin-bottom:12px}
+.loading.small{padding:30px 0}
+.ctx-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.ctx-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.ctx-card.wide{grid-column:1/-1}
+.ctx-card h3{font-size:20px;margin-bottom:10px;color:var(--ice)}
+.venue{font:700 26px 'Barlow Condensed';margin:0}
+dl.mini{grid-template-columns:1fr 1fr;margin:10px 0}
+.form-row{display:grid;grid-template-columns:44px 56px 1fr;align-items:center;gap:8px;padding:6px 0}
+.form-row span{color:var(--ink3);font-size:13px}
+.pills{display:flex;gap:3px;flex-wrap:wrap}
+.r{font-style:normal;font:700 11px 'DM Sans';min-width:24px;height:22px;border-radius:5px;display:grid;place-items:center;padding:0 3px}
+.r.w{background:#1e4d3a;color:var(--good)}.r.l{background:#4d2329;color:var(--bad)}.r.o{background:#4a3f22;color:var(--warn)}
+.cmp-head{display:flex;justify-content:space-between;font:700 18px 'Barlow Condensed';margin-bottom:6px}.cmp-head span{display:flex;align-items:center;gap:6px}
+.cmp{display:grid;grid-template-columns:90px 1fr 90px;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);position:relative}
+.cmp span{font:700 20px 'Barlow Condensed';font-variant-numeric:tabular-nums;color:var(--ink2)}.cmp span:last-of-type{text-align:right}
+.cmp span.win{color:var(--ice)}.cmp small{font:500 11px 'DM Sans';color:var(--ink3);margin-left:5px}
+.cmp-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--chip);gap:2px}
+.cmp-bar i:first-child{background:var(--a)}.cmp-bar i:last-child{background:var(--h);margin-left:auto}
+.cmp em{grid-column:1/-1;order:-1;font-style:normal;font-size:12px;color:var(--ink3);text-align:center;margin-bottom:-4px}
+.tips{margin-top:14px;padding:16px 18px;border-radius:var(--r);border:1px solid #6b5a2f;background:linear-gradient(135deg,#2a2412,var(--card))}
+.tips h3{color:var(--gold);font-size:20px;margin-bottom:6px}.tips ul{margin:0;padding-left:18px}.tips li{margin:6px 0;color:var(--ink2)}
+.sub-h{margin:22px 0 10px}
+
+/* ---------- Articles ---------- */
+.articles{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:14px}
+.article{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;text-decoration:none;color:var(--ink);transition:transform .2s,border-color .2s}
+.article:hover{transform:translateY(-3px);border-color:var(--ice2)}
+.article img,.article .noimg{width:100%;aspect-ratio:16/9;object-fit:cover;background:var(--bg2)}
+.a-body{padding:14px}.a-body small{color:var(--ink3);font-size:12px}.a-body small b{color:var(--gold);font-weight:600}
+.a-body h3{font-size:22px;margin:6px 0}.a-body p{margin:0;color:var(--ink2);font-size:14px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.article.big{grid-column:1/-1;display:grid;grid-template-columns:1.3fr 1fr}
+.article.big img{height:100%;aspect-ratio:auto;min-height:240px}.article.big h3{font-size:34px}.article.big .a-body{padding:24px;align-self:center}
+.articles.small{margin-top:0}
+
+@media (max-width:760px){
+  .hero3d{min-height:520px}.hero-overlay{min-height:520px;padding:22px 18px;max-width:none;background:linear-gradient(0deg,#060b16f5 30%,#060b1680 65%,transparent)}
+  .ctx-grid{grid-template-columns:1fr}
+  .cmp{grid-template-columns:70px 1fr 70px}.cmp span{font-size:17px}
+  .article.big{grid-template-columns:1fr}.article.big h3{font-size:26px}.article.big img{min-height:0;aspect-ratio:16/9}
+}
+
+/* ---------- Browser surfaces ---------- */
+::selection{background:#568fe066;color:#fff}
+html{scrollbar-color:#2b4268 var(--bg)}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:#2b4268;border-radius:10px;border:2px solid var(--bg)}
+input{caret-color:var(--ice)}
+.ic{display:block}
+.add{display:grid;place-items:center;width:44px;height:44px}
+.cap{display:inline-block}.cap::first-letter{text-transform:uppercase}
+.hero3d .lead{color:var(--ink)}
+
+/* ---------- Border beam (after Magic UI's BorderBeam), for live games and the featured match ---------- */
+@property --beam{syntax:'<angle>';inherits:false;initial-value:0deg}
+.beam{position:relative;isolation:isolate}
+.beam::after{content:'';position:absolute;inset:-1px;border-radius:inherit;padding:1.5px;pointer-events:none;
+  background:conic-gradient(from var(--beam),transparent 0deg,transparent 280deg,var(--h,var(--ice)) 320deg,#fff 345deg,transparent 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
+  animation:beam 4s linear infinite}
+@keyframes beam{to{--beam:360deg}}
+.game.is-live{border-color:color-mix(in srgb,#ff4d5e 45%,var(--line))}
+@media (prefers-reduced-motion:reduce){.beam::after{display:none}}

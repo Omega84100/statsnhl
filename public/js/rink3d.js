@@ -7,9 +7,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const W = 200, H = 85, R = 28;
 const PX = 10; // texture pixels per foot
 
-function rinkShape() {
+function rinkShape(grow = 0) {
+  return roundRect(W + 2 * grow, H + 2 * grow, R + grow);
+}
+function roundRect(w, h, R) {
   const s = new THREE.Shape();
-  const x = W / 2, y = H / 2;
+  const x = w / 2, y = h / 2;
   s.moveTo(-x + R, -y);
   s.lineTo(x - R, -y); s.absarc(x - R, -y + R, R, -Math.PI / 2, 0);
   s.lineTo(x, y - R); s.absarc(x - R, y - R, R, 0, Math.PI / 2);
@@ -92,7 +95,7 @@ function labelCanvas(text) {
 // Starting six positions for a team defending the given side (+1 right, -1 left).
 const SLOTS = { C: [12, 0], LW: [14, 20], RW: [14, -20], D1: [42, 14], D2: [42, -14], G: [85, 0] };
 
-export function createRink(container, { onPick } = {}) {
+export function createRink(container, { onPick, small = false, shiftX = 0, autoRotateSpeed = 0.35 } = {}) {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -100,13 +103,13 @@ export function createRink(container, { onPick } = {}) {
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(40, 1, 1, 1000);
+  const camera = new THREE.PerspectiveCamera(40, 1, 1, 1500);
   camera.position.set(0, 110, 120);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.maxPolarAngle = Math.PI / 2.15;
   controls.minDistance = 60; controls.maxDistance = 320;
-  controls.autoRotate = !reduced; controls.autoRotateSpeed = 0.35;
+  controls.autoRotate = !reduced; controls.autoRotateSpeed = autoRotateSpeed;
   controls.enablePan = false;
   renderer.domElement.addEventListener('pointerdown', () => { controls.autoRotate = false; }, { once: true });
 
@@ -158,6 +161,106 @@ export function createRink(container, { onPick } = {}) {
     scene.add(net);
   }
 
+  // ---------- Arena: stands with crowd, LED ribbon, hanging scoreboard, light beams ----------
+  scene.fog = new THREE.Fog(0x0a1223, 260, 620);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x070d1a, roughness: 1 }));
+  floor.position.y = -0.05; scene.add(floor);
+  const ROWS = small ? 12 : 20, STEP_D = 3.2, STEP_H = 1.7, START = 7;
+  const standMat = new THREE.MeshStandardMaterial({ color: 0x1a2438, roughness: 0.9 });
+  const crowdPos = [], crowdCol = [];
+  const crowdColors = [new THREE.Color(0xffffff), new THREE.Color(0x1d2b45), new THREE.Color(0x30405e), new THREE.Color(0xd9d9d9)];
+  const teamCol = new THREE.Color(0x568fe0), awayCol = new THREE.Color(0xc8102e);
+  for (let i = 0; i < ROWS; i++) {
+    const d = START + i * STEP_D + (i >= ROWS * 0.6 ? 6 : 0); // gap before the upper bowl
+    const ring = rinkShape(d + STEP_D);
+    ring.holes.push(new THREE.Path(rinkShape(d).getPoints(40)));
+    const h = 4 + i * STEP_H + (i >= ROWS * 0.6 ? 6 : 0);
+    const step = new THREE.Mesh(new THREE.ExtrudeGeometry(ring, { depth: h, bevelEnabled: false, curveSegments: 16 }).rotateX(-Math.PI / 2), standMat);
+    scene.add(step);
+    // crowd: one dot per seat along this row
+    const pts = rinkShape(d + STEP_D * 0.55).getSpacedPoints(Math.round((2 * (W + H) + 2 * Math.PI * d) / 2.1));
+    for (const p of pts) {
+      if (Math.random() < 0.12) continue; // a few empty seats
+      crowdPos.push(p.x, h + 1.2 + Math.random() * 0.4, -p.y);
+      const r = Math.random();
+      crowdCol.push(...(r < 0.45 ? teamCol : r < 0.55 ? awayCol : crowdColors[(Math.random() * 4) | 0]).toArray());
+    }
+  }
+  const crowdGeo = new THREE.BufferGeometry();
+  crowdGeo.setAttribute('position', new THREE.Float32BufferAttribute(crowdPos, 3));
+  crowdGeo.setAttribute('color', new THREE.Float32BufferAttribute(crowdCol, 3));
+  const crowd = new THREE.Points(crowdGeo, new THREE.PointsMaterial({ size: 1.6, vertexColors: true, sizeAttenuation: true }));
+  scene.add(crowd);
+  // LED ribbon boards between the bowls and on the dasher boards
+  const ribbonD = START + Math.ceil(ROWS * 0.6) * STEP_D + 2;
+  const ribbonShape = rinkShape(ribbonD + 0.6); ribbonShape.holes.push(new THREE.Path(rinkShape(ribbonD).getPoints(40)));
+  const ribbonMat = new THREE.MeshStandardMaterial({ color: 0x568fe0, emissive: 0x568fe0, emissiveIntensity: 1.2 });
+  const ribbon = new THREE.Mesh(new THREE.ExtrudeGeometry(ribbonShape, { depth: 2.4, bevelEnabled: false, curveSegments: 16 }).rotateX(-Math.PI / 2), ribbonMat);
+  ribbon.position.y = 4 + Math.ceil(ROWS * 0.6) * STEP_H + 1.5; scene.add(ribbon);
+  // Scoreboard hanging above center ice
+  const board = new THREE.Group();
+  const sbCanvas = document.createElement('canvas'); sbCanvas.width = 1024; sbCanvas.height = 512;
+  const sbTex = new THREE.CanvasTexture(sbCanvas); sbTex.colorSpace = THREE.SRGBColorSpace;
+  const screenMat = new THREE.MeshBasicMaterial({ map: sbTex, toneMapped: false });
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x0b0f18, roughness: 0.6, metalness: 0.4 });
+  const SB_W = 30, SB_H = 15;
+  board.add(new THREE.Mesh(new THREE.BoxGeometry(SB_W, SB_H + 2, SB_W * 0.6), frameMat));
+  for (const [ry, dz] of [[0, 1], [Math.PI, -1]]) {
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(SB_W - 1, SB_H), screenMat);
+    scr.rotation.y = ry; scr.position.z = dz * (SB_W * 0.3 + 0.05); board.add(scr);
+  }
+  for (const [ry, dx] of [[Math.PI / 2, 1], [-Math.PI / 2, -1]]) {
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(SB_W * 0.6 - 1, SB_H), screenMat);
+    scr.rotation.y = ry; scr.position.x = dx * (SB_W / 2 + 0.05); board.add(scr);
+  }
+  const ledRing = new THREE.Mesh(new THREE.CylinderGeometry(SB_W * 0.62, SB_W * 0.62, 1.2, 48, 1, true), ribbonMat);
+  ledRing.position.y = -SB_H / 2 - 2; board.add(ledRing);
+  for (const x of [-10, 10]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 60, 6), frameMat); c.position.set(x, SB_H / 2 + 30, 0); board.add(c); }
+  board.position.y = small ? 46 : 52; scene.add(board);
+  // Light beams from the roof
+  const beams = new THREE.Group();
+  const beamMat = new THREE.MeshBasicMaterial({ color: 0xbfdcff, transparent: true, opacity: 0.05, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  for (let i = 0; i < 8; i++) {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(16, 110, 24, 1, true), beamMat);
+    const a = (i / 8) * Math.PI * 2;
+    cone.position.set(Math.cos(a) * 70, 55, Math.sin(a) * 30);
+    cone.lookAt(Math.cos(a) * 40, 0, Math.sin(a) * 18); cone.rotateX(Math.PI / 2);
+    beams.add(cone);
+  }
+  scene.add(beams);
+
+  function setScoreboard({ away = '', home = '', awayScore = null, homeScore = null, status = '', awayColor = '#c8102e', homeColor = '#568fe0', awayLogo = null, homeLogo = null } = {}) {
+    const g = sbCanvas.getContext('2d');
+    const grd = g.createLinearGradient(0, 0, 1024, 0);
+    grd.addColorStop(0, awayColor); grd.addColorStop(0.42, '#05080f'); grd.addColorStop(0.58, '#05080f'); grd.addColorStop(1, homeColor);
+    g.fillStyle = grd; g.fillRect(0, 0, 1024, 512);
+    g.fillStyle = 'rgba(0,0,0,.25)'; for (let y = 0; y < 512; y += 4) g.fillRect(0, y, 1024, 1); // LED scanlines
+    const draw = (img, x) => { if (img) g.drawImage(img, x - 90, 60, 180, 180); };
+    draw(awayLogo, 170); draw(homeLogo, 854);
+    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = '800 84px "Barlow Condensed", sans-serif';
+    g.fillText(away, 170, 330); g.fillText(home, 854, 330);
+    const score = awayScore == null ? 'VS' : `${awayScore} - ${homeScore}`;
+    g.font = `800 ${awayScore == null ? 150 : 190}px "Barlow Condensed", sans-serif`;
+    g.fillText(score, 512, 230);
+    g.font = '600 52px "DM Sans", sans-serif'; g.fillStyle = '#ffd166';
+    g.fillText(status, 512, 400);
+    sbTex.needsUpdate = true;
+  }
+  setScoreboard({ away: '', home: '', status: 'STATS NHL' });
+
+  function setColors(home, away) {
+    teamCol.set(home); awayCol.set(away);
+    ribbonMat.color.set(home); ribbonMat.emissive.set(home);
+    const col = crowdGeo.attributes.color;
+    for (let i = 0; i < col.count; i++) {
+      const r = Math.random();
+      const c = r < 0.45 ? teamCol : r < 0.55 ? awayCol : crowdColors[(Math.random() * 4) | 0];
+      col.setXYZ(i, c.r, c.g, c.b);
+    }
+    col.needsUpdate = true;
+  }
+
   const playersGroup = new THREE.Group(); scene.add(playersGroup);
   const shotsGroup = new THREE.Group(); scene.add(shotsGroup);
   const pickables = [];
@@ -171,7 +274,9 @@ export function createRink(container, { onPick } = {}) {
     const fitW = (W / 2 + 12) / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
     const fitH = (H / 2 + 30) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     camera.position.setLength(Math.max(fitW, fitH) * 1.02);
-    controls.maxDistance = camera.position.length() * 1.6;
+    controls.maxDistance = camera.position.length() * 1.8;
+    // On wide screens the hero text sits on the left: push the arena to the right.
+    if (shiftX && w > 760) camera.setViewOffset(w, h, -w * shiftX, 0, w, h); else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   }
   const ro = new ResizeObserver(resize); ro.observe(container); resize();
@@ -185,6 +290,8 @@ export function createRink(container, { onPick } = {}) {
     if (!visible) return;
     const t = (performance.now() - t0) / 1000;
     for (const s of shotsGroup.children) if (s.userData.goal) s.children[1].material.opacity = 0.35 + 0.25 * Math.sin(t * 3);
+    board.rotation.y = t * 0.15;
+    crowd.material.size = 1.5 + 0.15 * Math.sin(t * 6);
     controls.update();
     renderer.render(scene, camera);
   })();
@@ -255,7 +362,7 @@ export function createRink(container, { onPick } = {}) {
   }
 
   return {
-    setCenterLogo, setLineups, setShots,
+    setCenterLogo, setLineups, setShots, setScoreboard, setColors, loadImage,
     dispose() { running = false; ro.disconnect(); io.disconnect(); controls.dispose(); clear(playersGroup); clear(shotsGroup); renderer.dispose(); renderer.domElement.remove(); },
   };
 }

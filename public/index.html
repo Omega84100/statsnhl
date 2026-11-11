@@ -24,9 +24,9 @@
 <header class="topbar">
   <a class="brand" href="#/">STATS<b>NHL</b></a>
   <div class="day" role="group" aria-label="Choisir la soirée">
-    <button id="prev" class="icon-btn" aria-label="Soirée précédente">‹</button>
+    <button id="prev" class="icon-btn" aria-label="Soirée précédente"><svg class="ic" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
     <label class="day-label"><span id="day-text">Ce soir</span><input id="day" type="date" aria-label="Date de la soirée NHL"></label>
-    <button id="next" class="icon-btn" aria-label="Soirée suivante">›</button>
+    <button id="next" class="icon-btn" aria-label="Soirée suivante"><svg class="ic" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
   </div>
   <div class="top-actions">
     <span id="fresh" class="fresh" aria-live="polite"></span>
@@ -39,6 +39,7 @@
   <a href="#/paris" data-route="paris">Meilleurs paris</a>
   <a href="#/gardiens" data-route="gardiens">Gardiens</a>
   <a href="#/joueurs" data-route="joueurs">Tous les joueurs</a>
+  <a href="#/articles" data-route="articles">Articles</a>
   <a href="#/methode" data-route="methode">Méthode</a>
 </nav>
 
@@ -47,12 +48,12 @@
 </main>
 
 <dialog id="slip" aria-labelledby="slip-title">
-  <div class="dlg-head"><h2 id="slip-title">Mon combiné</h2><button class="icon-btn" data-close aria-label="Fermer">✕</button></div>
+  <div class="dlg-head"><h2 id="slip-title">Mon combiné</h2><button class="icon-btn" data-close aria-label="Fermer"><svg class="ic" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
   <div id="slip-body"></div>
 </dialog>
 
 <dialog id="player" aria-labelledby="player-title">
-  <div class="dlg-head"><h2 id="player-title">Joueur</h2><button class="icon-btn" data-close aria-label="Fermer">✕</button></div>
+  <div class="dlg-head"><h2 id="player-title">Joueur</h2><button class="icon-btn" data-close aria-label="Fermer"><svg class="ic" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
   <div id="player-body"></div>
 </dialog>
 

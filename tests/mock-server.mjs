@@ -53,6 +53,14 @@ const nhl = (p) => {
     for (let i = 0; i < 39; i++) plays.push({ typeDescKey: i % 9 === 0 ? 'goal' : 'shot-on-goal', homeTeamDefendingSide: 'right', details: { xCoord: Math.round((rnd() * 70 + 15) * (i % 2 ? 1 : -1)), yCoord: Math.round(rnd() * 70 - 35), eventOwnerTeamId: i % 2 ? 1 : 2 } });
     return { homeTeam: { id: 1 }, awayTeam: { id: 2 }, plays };
   }
+  if (p.endsWith('/right-rail')) {
+    const t = (r) => ({ ppPctg: 0.25 - r * 0.01, pkPctg: 0.78 + r * 0.005, faceoffWinningPctg: 0.51, goalsForPerGamePlayed: 3.4 - r * 0.05, goalsAgainstPerGamePlayed: 2.8 + r * 0.06, ppPctgRank: 3 + r, pkPctgRank: 25 + r, faceoffWinningPctgRank: 12, goalsForPerGamePlayedRank: 4 + r, goalsAgainstPerGamePlayedRank: 10 + r });
+    const res = ['W', 'W', 'L', 'OTL', 'W', 'SOL', 'W', 'L', 'W', 'W'].map((g) => ({ opponentAbbrev: 'BOS', gameResult: g }));
+    return { seasonSeries: [], seasonSeriesWins: { awayTeamWins: 1, homeTeamWins: 0 },
+      gameInfo: { referees: [{ default: 'Wes McCauley' }], linesmen: [], awayTeam: { headCoach: { default: 'Martin St-Louis' }, scratches: [] }, homeTeam: { headCoach: { default: 'Craig Berube' }, scratches: [{ firstName: { default: 'Max' }, lastName: { default: 'Domi' } }] } },
+      teamSeasonStats: { awayTeam: t(0), homeTeam: t(20) },
+      last10Record: { awayTeam: { record: '6-2-2', streakType: 'W', streak: 3, pastGameResults: res }, homeTeam: { record: '5-4-1', streakType: 'L', streak: 1, pastGameResults: [...res].reverse() } } };
+  }
   if (p.includes('/game-log/')) return { gameLog: [1, 2, 3, 4, 5].map((d) => ({ gameDate: `2026-11-0${d}`, homeRoadFlag: d % 2 ? 'H' : 'R', opponentAbbrev: 'BOS', goals: d % 3 === 0 ? 1 : 0, assists: d % 2, points: (d % 3 === 0 ? 1 : 0) + (d % 2), shots: d + 1, toi: '19:2' + d })) };
   return null;
 };
@@ -67,6 +75,7 @@ http.createServer(async (req, res) => {
   const send = (code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type }); res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body)); };
   if (url.pathname.startsWith('/api/nhl/')) { const d = nhl(url.pathname.slice(9)); return d ? send(200, d) : send(404, { error: 'introuvable' }); }
   if (url.pathname.startsWith('/api/img/')) return url.pathname.endsWith('.svg') ? send(200, svgLogo(url.pathname.match(/([A-Z]{3})_/)[1]), 'image/svg+xml') : send(200, png, 'image/png');
+  if (url.pathname === '/api/news') return send(200, { items: [1, 2, 3, 4, 5].map((i) => ({ _entityId: 'n' + i, slug: 'article-' + i, headline: i === 1 ? 'Matthews et les Maple Leafs reçoivent le Canadien' : 'Les formations et gardiens partants prévus de la journée ' + i, fields: { description: 'Aperçu du match de ce soir, avec les trios et les gardiens annoncés.' }, contentDate: new Date(Date.now() - i * 3600e3).toISOString(), thumbnail: { templateUrl: 'https://media.d3.nhle.com/image/private/{formatInstructions}/prd/x' + i }, tags: [{ slug: 'teamid-10', extraData: { abbreviation: i % 2 ? 'TOR' : 'EDM' } }, { slug: i === 1 ? 'game-preview' : 'news', extraData: {} }, ...(i === 1 ? [{ slug: 'teamid-8', extraData: { abbreviation: 'MTL' } }] : [])] })) });
   if (url.pathname === '/api/odds/events') return send(200, { enabled: true, events: [{ id: 'a'.repeat(32), home: 'Toronto Maple Leafs', away: 'Montreal Canadiens', start: games[0].startTimeUTC }] });
   if (url.pathname.startsWith('/api/odds/event/')) return send(200, { enabled: true, players: summarizeProps(oddsEvent) });
   let path = url.pathname === '/' ? '/index.html' : url.pathname;

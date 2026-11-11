@@ -185,3 +185,24 @@ export async function loadGameOdds(game) {
   const r = await fetch(`/api/odds/event/${match.id}`).then((x) => x.json()).catch(() => null);
   return r?.players ? { enabled: true, players: r.players } : { enabled: true, players: {}, error: r?.error };
 }
+
+// ----- Match context (head-to-head, special teams, last 10, coaches, officials) -----
+export const loadRightRail = (gameId) => tryGet(`gamecenter/${gameId}/right-rail`);
+
+// ----- Official NHL.com news in French -----
+let newsPromise = null;
+export function loadNews() {
+  newsPromise ??= fetch('/api/news').then((r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] })).then((d) =>
+    (d.items || []).map((it) => {
+      const tags = it.tags || [];
+      const img = it.thumbnail?.templateUrl ? it.thumbnail.templateUrl.replace('{formatInstructions}', 't_ratio16_9-size40') : it.thumbnail?.thumbnailUrl;
+      return {
+        id: it._entityId || it.slug, title: it.headline || it.title, summary: it.fields?.description || String(it.summary || '').split('\n')[0],
+        url: `https://www.nhl.com/fr/news/${it.slug}`, img, date: it.contentDate, author: it.createdBy || '',
+        teams: tags.map((t) => t.extraData?.abbreviation).filter(Boolean),
+        players: tags.map((t) => Number(t.extraData?.playerId)).filter(Boolean),
+        preview: tags.some((t) => t.slug === 'game-preview'),
+      };
+    }).filter((a) => a.title));
+  return newsPromise;
+}
