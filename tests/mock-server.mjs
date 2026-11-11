@@ -61,7 +61,7 @@ const nhl = (p) => {
       teamSeasonStats: { awayTeam: t(0), homeTeam: t(20) },
       last10Record: { awayTeam: { record: '6-2-2', streakType: 'W', streak: 3, pastGameResults: res }, homeTeam: { record: '5-4-1', streakType: 'L', streak: 1, pastGameResults: [...res].reverse() } } };
   }
-  if (p.includes('/game-log/')) return { gameLog: [1, 2, 3, 4, 5].map((d) => ({ gameDate: `2026-11-0${d}`, homeRoadFlag: d % 2 ? 'H' : 'R', opponentAbbrev: 'BOS', goals: d % 3 === 0 ? 1 : 0, assists: d % 2, points: (d % 3 === 0 ? 1 : 0) + (d % 2), shots: d + 1, toi: '19:2' + d })) };
+  if (p.includes('/game-log/')) return { gameLog: [1, 2, 3, 4, 5].map((d) => ({ gameDate: `2026-11-0${d}`, homeRoadFlag: d % 2 ? 'H' : 'R', opponentAbbrev: d < 3 ? 'TOR' : 'BOS', goals: d % 3 === 0 ? 1 : 0, assists: d % 2, points: (d % 3 === 0 ? 1 : 0) + (d % 2), shots: d + 1, toi: '19:2' + d })) };
   return null;
 };
 

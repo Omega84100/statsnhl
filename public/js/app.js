@@ -1,4 +1,4 @@
-import { loadNight, loadScores, loadPlayByPlay, loadGameLog, loadGameOdds, shotsFromPbp, nyDate, shiftDate, normName, loadRightRail, loadNews, applyDailyFaceoff, gamePlayers } from './data.js';
+import { loadNight, loadScores, loadPlayByPlay, loadGameLog, loadForm, loadGameOdds, shotsFromPbp, nyDate, shiftDate, normName, loadRightRail, loadNews, applyDailyFaceoff, gamePlayers } from './data.js';
 import { MARKETS, pct, odds2, mmss, fairOdds, edge, frenchOdds, ratingLabel } from './model.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -106,12 +106,36 @@ function pickCard(p, m, rank) {
       <div><small>${fr ? 'Cote FR est.' : 'Gardien adv.'}</small><b>${fr ? odds2(fr) : (p.oppGoalie ? esc(p.oppGoalie.short.split(' ').pop()) + ' ' + ratingChip(p.oppGoalie) : '—')}</b></div>
     </div>
     <div class="bar"><i style="width:${Math.round(prob * 100)}%"></i></div>
+    <div class="formline" data-form="${p.id}" data-opp="${esc(p.opp)}"><span class="form sk">Forme…</span></div>
     <div class="pick-foot">
       ${e != null ? `<span class="tag ${e > 0 ? 'good' : 'bad'}">${e > 0 ? 'Valeur +' : 'Valeur '}${Math.round(e * 100)}</span>` : ''}
       ${p.b2b ? '<span class="tag warn">a joué hier</span>' : ''}
       <button class="add ${inSlip(p.id, m) ? 'on' : ''}" data-add="${p.id}" data-m="${m}" aria-label="Ajouter au combiné">${addIcon(inSlip(p.id, m))}</button>
     </div>
   </article>`;
+}
+
+// ---------------- Form: hot/cold and history vs the opponent ----------------
+function formTone(f) { return f.last5Hits >= 4 ? 'hot' : f.last5Hits <= 1 ? 'cold' : 'mid'; }
+const FORM_LABEL = { hot: 'En feu', mid: 'Régulier', cold: 'En panne' };
+function formLine(f, opp) {
+  const t = formTone(f);
+  return `<span class="form ${t}" title="Au moins 1 point dans ${f.last5Hits} des 5 derniers matchs">${FORM_LABEL[t]} ${f.last5Hits}/5</span>`
+    + (f.vs.n ? `<span class="vsform" title="${f.vs.n} matchs contre ${esc(opp)} depuis ${f.since} : ${f.vs.goals} buts, ${f.vs.assists} passes">vs ${esc(opp)} ${f.vs.hits}/${f.vs.n} · ${f.vs.points} pts</span>` : `<span class="vsform none">jamais affronté ${esc(opp)}</span>`);
+}
+// Fill every [data-form] placeholder on screen, a few players at a time.
+let formQueue = Promise.resolve();
+function fillForms() {
+  const els = [...document.querySelectorAll('[data-form]:not([data-done])')];
+  els.forEach((el) => el.setAttribute('data-done', ''));
+  formQueue = formQueue.then(async () => {
+    for (let i = 0; i < els.length; i += 6) {
+      await Promise.all(els.slice(i, i + 6).map(async (el) => {
+        const f = await loadForm(+el.dataset.form, el.dataset.opp, state.date).catch(() => null);
+        if (f && el.isConnected) el.innerHTML = formLine(f, el.dataset.opp);
+      }));
+    }
+  });
 }
 
 // ---------------- Views ----------------
@@ -251,7 +275,7 @@ function unitPanel(g) {
     const order = [['LW', 'AG'], ['C', 'C'], ['RW', 'AD'], ['D1', 'D'], ['D2', 'D']];
     return `<div class="unit-col" style="--tc:${t.color}"><h3>${logo(t, 24)} ${esc(t.abbr)} <small>${t.linesSource === 'dailyfaceoff' ? 'Daily Faceoff' : 'estimation'}</small></h3>
       ${order.map(([k, lab]) => { const p = s[k]; if (!p) return ''; const pl = state.night.players.find((x) => x.id === p.id && x.gameId === g.id);
-        return `<button class="u-row" data-player="${p.id}">${face(p, 'mini')}<span><b>${esc(p.name)}</b><small>${esc(p.posLabel || lab)} · ${p.points} pts en ${p.gp} m.</small></span>
+        return `<button class="u-row" data-player="${p.id}">${face(p, 'mini')}<span><b>${esc(p.name)}</b><small>${esc(p.posLabel || lab)} · ${p.points} pts en ${p.gp} m.</small><span class="formline" data-form="${p.id}" data-opp="${esc(t === g.away ? g.home.abbr : g.away.abbr)}"></span></span>
           <span class="u-stat"><b>${mmss(p.toi)}</b><small>glace / m.</small></span><span class="u-stat"><b>${pl ? pct(pl.probs.point) : '—'}</b><small>1+ point</small></span></button>`; }).join('')}
       ${s.G ? `<button class="u-row" data-player="${s.G.id}">${face(s.G, 'mini')}<span><b>${esc(s.G.name)}</b><small>Gardien · ${(s.G.savePct * 100 || 0).toFixed(1).replace('.', ',')} % d’arrêts</small></span><span class="u-stat"><b>${s.G.rating}</b><small>note /100</small></span></button>` : ''}</div>`;
   };
@@ -482,11 +506,17 @@ async function openPlayer(id) {
     ${MARKETS.map((m) => { const fr = frenchOdds(odds[m.id]); return `<tr><td>${esc(m.label)}</td><td class="num">${pct(p.probs[m.id])}</td><td class="num">${odds2(fairOdds(p.probs[m.id]))}</td><td class="num">${fr ? odds2(fr) : '—'}</td>
       <td><button class="add ${inSlip(p.id, m.id) ? 'on' : ''}" data-add="${p.id}" data-m="${m.id}" aria-label="Ajouter ${esc(m.label)} au combiné">${addIcon(inSlip(p.id, m.id))}</button></td></tr>`; }).join('')}
     </tbody></table>
+ <h3>Forme</h3><div id="pform" class="pform">Chargement…</div>
+    <h3>Contre ${esc(p.opp)}</h3><div id="pvs" class="glog">Chargement…</div>
     <h3>5 derniers matchs</h3><div id="glog" class="glog">Chargement…</div>`;
   dlg.showModal();
-  const log = await loadGameLog(id);
-  const games = (log?.gameLog || []).slice(0, 5);
-  $('#glog').innerHTML = games.length ? `<div class="glog-row">${games.map((x) => `<div class="glog-cell ${x.points ? 'hit' : ''}"><small>${esc(x.gameDate?.slice(5).split('-').reverse().join('/'))} ${x.homeRoadFlag === 'H' ? 'vs' : '@'} ${esc(x.opponentAbbrev)}</small><b>${x.goals}+${x.assists}</b><span>${x.shots} tirs · ${esc(x.toi)}</span></div>`).join('')}</div>` : 'Pas de match récent.';
+  const f = await loadForm(id, p.opp, state.date);
+  const games = f.last5;
+  const cell = (x) => `<div class="glog-cell ${x.points ? 'hit' : ''}"><small>${esc((x.gameDate || '').replace(/^\d\d(\d\d)-(\d\d)-(\d\d)$/, '$3/$2/$1'))} ${x.homeRoadFlag === 'H' ? 'vs' : '@'} ${esc(x.opponentAbbrev)}</small><b>${x.goals}+${x.assists}</b><span>${x.shots} tirs · ${esc(x.toi)}</span></div>`;
+  if (!$('#pform')) return;
+  $('#pform').innerHTML = `<div class="pf-row">${formLine(f, p.opp)}</div><p class="fine">${f.last10Pts} points (${f.last10Goals} but${f.last10Goals > 1 ? "s" : ""}) sur ses ${f.last10N} derniers matchs, au moins 1 point dans ${f.last10Hits} d’entre eux.</p>`;
+  $('#pvs').innerHTML = f.vs.n ? `<p class="fine">${f.vs.n} matchs depuis ${f.since} : ${f.vs.goals} buts, ${f.vs.assists} passes, ${f.vs.shots} tirs. Au moins 1 point dans ${f.vs.hits} sur ${f.vs.n}.</p><div class="glog-row">${f.vs.list.slice(0, 10).map(cell).join('')}</div>` : `<p class="fine">Aucun match contre ${esc(p.opp)} depuis ${f.since}.</p>`;
+  $('#glog').innerHTML = games.length ? `<div class="glog-row">${games.map(cell).join('')}</div>` : 'Pas de match récent.';
 }
 
 // ---------------- Router & render ----------------
@@ -508,6 +538,7 @@ function render() {
   if (r.name === '' && state.night.games.length) mountRink(featuredGame(), { small: true, shiftX: 0.2 });
   if (r.name === 'articles') fillArticles();
   runTickers();
+  fillForms();
   if (r.name === 'match') {
     const g = state.night.games.find((x) => x.id === r.id);
     if (g) {
@@ -559,6 +590,7 @@ document.addEventListener('click', (e) => {
     if (g) {
       document.querySelectorAll('.units [data-unit]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.unit === state.unit)));
       $('#unit-panel').innerHTML = unitPanel(g);
+      fillForms();
       $('#rink-legend').firstChild && ($('#rink-legend').textContent = $('#rink-legend').textContent.replace(/^[^·]+/, UNIT_NAMES[state.unit] + ' sur la glace '));
       document.querySelectorAll('.lu-row').forEach((r) => r.classList.toggle('sel', !!r.querySelector(`[data-unit="${state.unit}"]`)));
       if (state.rinkMode !== 'lineup') { state.rinkMode = 'lineup'; document.querySelectorAll('[data-rink]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.rink === 'lineup'))); }

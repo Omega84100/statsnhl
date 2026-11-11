@@ -283,3 +283,16 @@ button.unit-tag:hover{border-color:var(--ice2);color:var(--ice)}
   .units{width:100%;overflow-x:auto}.units button{flex:1;min-width:44px}
   .rink-bar{gap:8px}
 }
+
+/* ---------- Form & history vs opponent ---------- */
+.formline{display:flex;flex-wrap:wrap;gap:6px;min-height:24px;align-items:center}
+.u-row .formline{margin-top:4px;min-height:0}
+.form,.vsform{font:600 12px 'DM Sans';border-radius:999px;padding:3px 9px;border:1px solid var(--line);white-space:nowrap}
+.form.hot{color:#ffb38a;border-color:#7a3b1f;background:#3a1d10}
+.form.mid{color:var(--ink2)}
+.form.cold{color:#9cc3ff;border-color:#284a78;background:#11223d}
+.form.sk{color:var(--ink3);border-style:dashed}
+.vsform{color:var(--ice);background:var(--bg2)}.vsform.none{color:var(--ink3)}
+.u-row .form,.u-row .vsform{font-size:11px;padding:2px 7px}
+.pf-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.pform .form,.pform .vsform{font-size:13px;padding:5px 12px}

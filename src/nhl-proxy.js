@@ -18,6 +18,7 @@ const ROUTES = [
   [new RegExp(`^club-schedule/${TEAM}/week/now$`), 1800],
   [/^standings\/now$/, 1800],
   [/^player\/\d{7}\/(landing|game-log\/now)$/, 1800],
+  [/^player\/\d{7}\/game-log\/20\d{6}\/2$/, 86400],
 ];
 
 export function cacheSeconds(path) {

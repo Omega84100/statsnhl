@@ -199,6 +199,30 @@ export async function loadGameLog(playerId) {
   return tryGet(`player/${playerId}/game-log/now`);
 }
 
+// Recent form + history against tonight's opponent (this season and the 2 before).
+const formCache = new Map();
+export function loadForm(playerId, opp, date) {
+  const key = `${playerId}:${opp}`;
+  if (formCache.has(key)) return formCache.get(key);
+  const y = Number(date.slice(0, 4)) - (Number(date.slice(5, 7)) < 9 ? 1 : 0);
+  const past = [1, 2].map((k) => `${y - k}${y - k + 1}`);
+  const pr = Promise.all([tryGet(`player/${playerId}/game-log/now`), ...past.map((s) => tryGet(`player/${playerId}/game-log/${s}/2`))]).then(([now, ...old]) => {
+    const cur = now?.gameLog || [];
+    const all = [...cur, ...old.flatMap((o) => o?.gameLog || [])];
+    const sum = (list, k) => list.reduce((a, g) => a + (g[k] || 0), 0);
+    const last10 = cur.slice(0, 10), last5 = cur.slice(0, 5);
+    const vs = all.filter((g) => g.opponentAbbrev === opp);
+    return {
+      last5, last5Hits: last5.filter((g) => g.points > 0).length, last10Hits: last10.filter((g) => g.points > 0).length, last10N: last10.length,
+      last10Pts: sum(last10, 'points'), last10Goals: sum(last10, 'goals'),
+      vs: { list: vs, n: vs.length, goals: sum(vs, 'goals'), assists: sum(vs, 'assists'), points: sum(vs, 'points'), shots: sum(vs, 'shots'), hits: vs.filter((g) => g.points > 0).length },
+      since: past[1].slice(0, 4),
+    };
+  });
+  formCache.set(key, pr);
+  return pr;
+}
+
 // Shots and goals for the 3D rink, oriented so the away team always shoots at
 // the right-hand net and the home team at the left-hand net (each team defends
 // its own half, like on the lineup view).
