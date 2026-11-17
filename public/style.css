@@ -296,3 +296,9 @@ button.unit-tag:hover{border-color:var(--ice2);color:var(--ice)}
 .u-row .form,.u-row .vsform{font-size:11px;padding:2px 7px}
 .pf-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
 .pform .form,.pform .vsform{font-size:13px;padding:5px 12px}
+
+/* Installed app on iPhone (notch / home bar): keep content clear of the system areas. Invisible in a normal browser. */
+@supports (padding:env(safe-area-inset-top)){
+  .topbar{padding-top:max(12px,env(safe-area-inset-top));padding-left:max(20px,env(safe-area-inset-left));padding-right:max(20px,env(safe-area-inset-right))}
+  .foot{padding-bottom:max(40px,env(safe-area-inset-bottom))}
+}

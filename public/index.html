@@ -2,10 +2,16 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Stats NHL · Paris du soir</title>
 <meta name="description" content="Les matchs NHL du soir, les joueurs les plus probables, les gardiens notés et la patinoire en 3D, mis à jour en direct.">
 <meta name="theme-color" content="#0a1223">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stats NHL">
 <meta name="robots" content="noindex">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%230a1223'/%3E%3Cellipse cx='32' cy='36' rx='16' ry='7' fill='%2390c4ff'/%3E%3Cellipse cx='32' cy='31' rx='16' ry='7' fill='%23edf3ff'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -62,5 +68,6 @@
   Outil perso entre amis, pas un conseil de pari. Jouer comporte des risques : 09 74 75 13 13 (Joueurs Info Service).
 </footer>
 <script type="module" src="/js/app.js"></script>
+<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));</script>
 </body>
 </html>
